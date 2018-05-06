@@ -401,13 +401,7 @@ void pagefault(uint err_code)
     panic("Pagefault. No process.");
   }
 
-  if (va >= KERNBASE)
-  {
-    myproc()->killed = 1;
-    return;
-  }
-
-  if ((pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
+  if ((va >= KERNBASE) || (pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
   {
     cprintf("Pagefault. Illegal address.\n");
     myproc()->killed = 1;
