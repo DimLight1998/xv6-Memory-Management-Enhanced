@@ -89,3 +89,9 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+
+int sys_nfpgs(void)
+{
+  return get_num_free_pages();
+}
