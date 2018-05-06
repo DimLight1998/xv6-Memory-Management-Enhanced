@@ -318,7 +318,6 @@ copyuvm(pde_t *pgdir, uint sz)
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
-  char *mem;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -327,18 +326,19 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
+    *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
+    if(mappages(d,(void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
-    memmove(mem, (char*)P2V(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0)
-      goto bad;
+    incr_page_ref(pa);
   }
+  lcr3(V2P(pgdir));
   return d;
 
 bad:
   freevm(d);
+  lcr3(V2P(pgdir));
   return 0;
 }
 
@@ -390,3 +390,48 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 //PAGEBREAK!
 // Blank page.
 
+
+void pagefault(uint err_code)
+{
+  uint va = rcr2();
+  pte_t *pte;
+
+  if (myproc() == 0)
+  {
+    panic("Pagefault. No process.");
+  }
+
+  if (va >= KERNBASE || (pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
+  {
+    cprintf("Pagefault. Illegal address.\n");
+    myproc()->killed = 1;
+    return;
+  }
+
+  if (*pte & PTE_W)
+  {
+    panic("Pagefault. Already writeable.");
+  }
+
+  uint pa = PTE_ADDR(*pte);
+  ushort ref = get_page_ref(pa);
+  char *mem;
+
+  if (ref == 1)
+    *pte |= PTE_W;
+  else if (ref > 1)
+  {
+    if ((mem = kalloc()) == 0)
+    {
+      cprintf("Pagefault. Out of memory.");
+      myproc()->killed = 1;
+      return;
+    }
+
+    memmove(mem, P2V(pa), PGSIZE);
+    *pte = V2P(mem) | PTE_P | PTE_U | PTE_W;
+    decr_page_ref(pa);
+  }
+  else
+    panic("Pagefault. Reference count error.");
+}
