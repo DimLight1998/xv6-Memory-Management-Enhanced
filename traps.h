@@ -36,7 +36,7 @@
 #define IRQ_ERROR       19
 #define IRQ_SPURIOUS    31
 
-// Bits in error code of page fault.
+// These are bits in error code when a page fault occurs.
 // See https://wiki.osdev.org/Page_Fault for details.
 #define PGFLT_P          1
 #define PGFLT_WR         2
