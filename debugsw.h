@@ -1,0 +1,2 @@
+#define SHOW_LAZY_ALLOCATION_INFO   0
+#define SHOW_PAGEFAULT_INFO         0

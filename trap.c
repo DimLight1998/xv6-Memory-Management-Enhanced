@@ -11,6 +11,7 @@
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
 extern uint vectors[];  // in vectors.S: array of 256 entry pointers
+extern int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
 struct spinlock tickslock;
 uint ticks;
 
