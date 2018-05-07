@@ -323,15 +323,17 @@ copyuvm(pde_t *pgdir, uint sz)
 
   if((d = setupkvm()) == 0)
     return 0;
-  for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+
+  for (i = PGSIZE; i < sz; i += PGSIZE)
+  {
+    if ((pte = walkpgdir(pgdir, (void *)i, 0)) == 0)
       panic("copyuvm: pte should exist");
-    
+
     // Don't know why need to ignore the test.
     // Run "cat README | grep run" to see difference.
     if(!(*pte & PTE_P))
       continue;
-      
+
     *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
@@ -404,11 +406,20 @@ void pagefault(uint err_code)
   if(SHOW_PAGEFAULT_INFO)
     cprintf("pagefault at virt addr 0x%x ,error code is %d.\n", va, err_code);
 
-  // If the page fault is caused by a non-present page, should be due to lazy allocation.
+  // If the page fault is caused by a non-present page,
+  // should be due to lazy allocation or null pointer protection.
   // Otherwise, it should be due to protection violation (copy on write).
   // If the page fault is caused by kernel, it should be handled too.
   if (!(err_code & PGFLT_P))
   {
+    // If va is less than PGSIZE, this is a null pointer.
+    if (va < PGSIZE)
+    {
+      cprintf("[ERROR] Dereferencing a null pointer (0x%x), \"%s\" will be killed.\n", va, myproc()->name);
+      myproc()->killed = 1;
+      return;
+    }
+
     if (SHOW_LAZY_ALLOCATION_INFO)
       cprintf("Lazy allocation at virt addr 0x%x.\n", va);
 
@@ -445,7 +456,8 @@ void pagefault(uint err_code)
 
   if ((va >= KERNBASE) || (pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
   {
-    cprintf("Pagefault. Illegal address.\n");
+    if (SHOW_PAGEFAULT_IA_ERR)
+      cprintf("Pagefault. Illegal address.\n");
     myproc()->killed = 1;
     return;
   }
