@@ -6,6 +6,8 @@
 #include "mmu.h"
 #include "proc.h"
 #include "elf.h"
+#include "traps.h"
+#include "debugsw.h"
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
@@ -57,7 +59,7 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
 // be page-aligned.
-static int
+int
 mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 {
   char *a, *last;
@@ -324,8 +326,12 @@ copyuvm(pde_t *pgdir, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
+    
+    // Don't know why need to ignore the test.
+    // Run "cat README | grep run" to see difference.
     if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
+      continue;
+      
     *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
@@ -394,6 +400,42 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 void pagefault(uint err_code)
 {
   uint va = rcr2();
+
+  if(SHOW_PAGEFAULT_INFO)
+    cprintf("pagefault at virt addr 0x%x ,error code is %d.\n", va, err_code);
+
+  // If the page fault is caused by a non-present page, should be due to lazy allocation.
+  // Otherwise, it should be due to protection violation (copy on write).
+  // If the page fault is caused by kernel, it should be handled too.
+  if (!(err_code & PGFLT_P))
+  {
+    if (SHOW_LAZY_ALLOCATION_INFO)
+      cprintf("Lazy allocation at virt addr 0x%x.\n", va);
+
+    char *mem = kalloc();
+    if (mem == 0)
+    {
+      cprintf("Lazy allocation failed: Memory out. Killing process.\n");
+      myproc()->killed = 1;
+      return;
+    }
+
+    // va needs to be rounded down, or two pages will be mapped in mappages().
+    va = PGROUNDDOWN(va);
+    memset(mem, 0, PGSIZE);
+
+    // The first process use this page can have write permissions,
+    // but once forked, copyuvm will set it permission to readonly.
+    if (mappages(myproc()->pgdir, (char *)va, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0)
+    {
+      cprintf("Lazy allocation failed: Memory out (2). Killing process.\n");
+      myproc()->killed = 1;
+      return;
+    };
+    
+    return;
+  }
+
   pte_t *pte;
 
   if (myproc() == 0)
