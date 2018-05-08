@@ -49,10 +49,10 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-};
 
-// Process memory is laid out contiguously, low addresses first:
-//   text
-//   original data and bss
-//   fixed-size stack
-//   expandable heap
+  // Now the stack is growing from top to bottom,
+  // and the heap is growing from bottom to top (Both expandable).
+
+  uint stack_size;             // Process stack size.
+  int stack_grow;              // Is the stack growing.
+};

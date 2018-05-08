@@ -162,6 +162,10 @@ growproc(int n)
   struct proc *curproc = myproc();
 
   sz = curproc->sz;
+
+  if (sz + n > USERTOP - curproc->stack_size - PGSIZE)
+    return -1;
+
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
@@ -198,6 +202,7 @@ fork(void)
   }
   np->sz = curproc->sz;
   np->parent = curproc;
+  np->stack_size = curproc->stack_size;
   *np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.

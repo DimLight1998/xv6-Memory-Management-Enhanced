@@ -47,13 +47,19 @@ sys_sbrk(void)
 {
   int addr;
   int n;
+  struct proc* curproc = myproc();
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
+  addr = curproc->sz;
   if (n < 0 && growproc(n) < 0)
     return -1;
-  myproc()->sz += n;
+
+  // Avoid heap grows higher than stack.
+  if (curproc->sz + n > USERTOP - curproc->stack_size - PGSIZE)
+    return -1;
+
+  curproc->sz += n;
   return addr;
 }
 
