@@ -225,10 +225,26 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   char *mem;
   uint a;
+  struct proc* curproc = myproc();
+  int stack_reserved = USERTOP - curproc->stack_size - PGSIZE;
 
-  if(newsz >= KERNBASE)
+  if (curproc->stack_grow == 1)
+  {
+    // An empty page is reserved between stack and heap.
+    if (oldsz == stack_reserved && oldsz < curproc->stack_size + PGSIZE)
+      return 0;
+
+    if (stack_reserved - PGSIZE < curproc->sz)
+      return 0;
+  }
+  else if (newsz > stack_reserved)
+  {
     return 0;
-  if(newsz < oldsz)
+  }
+
+  if (newsz > KERNBASE)
+    return 0;
+  if (newsz < oldsz)
     return oldsz;
 
   a = PGROUNDUP(oldsz);
@@ -324,6 +340,7 @@ copyuvm(pde_t *pgdir, uint sz)
   if((d = setupkvm()) == 0)
     return 0;
 
+  // Copy code section, data section and heap section.
   for (i = PGSIZE; i < sz; i += PGSIZE)
   {
     if ((pte = walkpgdir(pgdir, (void *)i, 0)) == 0)
@@ -341,6 +358,24 @@ copyuvm(pde_t *pgdir, uint sz)
       goto bad;
     incr_page_ref(pa);
   }
+
+  // Copy stack section.
+  // For simplicity we keep the stack shared.
+  for(i = USERTOP - myproc()->stack_size;i<USERTOP;i+=PGSIZE)
+  {
+    if ((pte = walkpgdir(pgdir, (void *)i, 0)) == 0)
+      panic("copyuvm: pte should exist");
+    if (!(*pte & PTE_P))
+      continue;
+
+    *pte &= ~PTE_W;
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
+    if (mappages(d, (void *)i, PGSIZE, pa, flags) < 0)
+      goto bad;
+    incr_page_ref(pa);
+  }
+
   lcr3(V2P(pgdir));
   return d;
 
@@ -402,12 +437,14 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 void pagefault(uint err_code)
 {
   uint va = rcr2();
+  struct proc* curproc = myproc();
 
   if(SHOW_PAGEFAULT_INFO)
-    cprintf("pagefault at virt addr 0x%x ,error code is %d.\n", va, err_code);
+    cprintf("pagefault at virt addr 0x%x, error code is %d, process name %s.\n", va, err_code, curproc->name);
 
   // If the page fault is caused by a non-present page,
-  // should be due to lazy allocation or null pointer protection.
+  // should be due to lazy allocation or null pointer protection,
+  // or stack needing growth.
   // Otherwise, it should be due to protection violation (copy on write).
   // If the page fault is caused by kernel, it should be handled too.
   if (!(err_code & PGFLT_P))
@@ -415,11 +452,31 @@ void pagefault(uint err_code)
     // If va is less than PGSIZE, this is a null pointer.
     if (va < PGSIZE)
     {
-      cprintf("[ERROR] Dereferencing a null pointer (0x%x), \"%s\" will be killed.\n", va, myproc()->name);
-      myproc()->killed = 1;
+      cprintf("[ERROR] Dereferencing a null pointer (0x%x), \"%s\" will be killed.\n", va, curproc->name);
+      curproc->killed = 1;
       return;
     }
 
+    // If va is higher than sz and lower than stack top, should be stack growth.
+    //? Is this always corrent?
+    if (va >= curproc->sz + PGSIZE && va < USERTOP - curproc->stack_size)
+    {
+      if (SHOW_STACK_GROWTH_INFO)
+        cprintf("[INFO ] Stack of \"%s\" is now growing.\n", curproc->name);
+      curproc->stack_grow = 1;
+
+      // An empty page is reserved between stack and heap.
+      if (allocuvm(curproc->pgdir, USERTOP - curproc->stack_size - PGSIZE, USERTOP - curproc->stack_size) == 0)
+      {
+        cprintf("[ERROR] Stack growth failed, \"%s\" will be killed.\n", curproc->name);
+        curproc->killed = 1;
+      }
+      curproc->stack_grow = 0;
+      curproc->stack_size += PGSIZE;
+      return;
+    }
+
+    // Otherwise, should be heap allocation.
     if (SHOW_LAZY_ALLOCATION_INFO)
       cprintf("Lazy allocation at virt addr 0x%x.\n", va);
 
@@ -427,7 +484,7 @@ void pagefault(uint err_code)
     if (mem == 0)
     {
       cprintf("Lazy allocation failed: Memory out. Killing process.\n");
-      myproc()->killed = 1;
+      curproc->killed = 1;
       return;
     }
 
@@ -437,28 +494,28 @@ void pagefault(uint err_code)
 
     // The first process use this page can have write permissions,
     // but once forked, copyuvm will set it permission to readonly.
-    if (mappages(myproc()->pgdir, (char *)va, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0)
+    if (mappages(curproc->pgdir, (char *)va, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0)
     {
       cprintf("Lazy allocation failed: Memory out (2). Killing process.\n");
-      myproc()->killed = 1;
+      curproc->killed = 1;
       return;
     };
-    
+  
     return;
   }
 
   pte_t *pte;
 
-  if (myproc() == 0)
+  if (curproc == 0)
   {
     panic("Pagefault. No process.");
   }
 
-  if ((va >= KERNBASE) || (pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
+  if ((va >= KERNBASE) || (pte = walkpgdir(curproc->pgdir, (void *)va, 0)) == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
   {
     if (SHOW_PAGEFAULT_IA_ERR)
       cprintf("Pagefault. Illegal address.\n");
-    myproc()->killed = 1;
+    curproc->killed = 1;
     return;
   }
 
@@ -478,7 +535,7 @@ void pagefault(uint err_code)
     if ((mem = kalloc()) == 0)
     {
       cprintf("Pagefault. Out of memory.");
-      myproc()->killed = 1;
+      curproc->killed = 1;
       return;
     }
 
