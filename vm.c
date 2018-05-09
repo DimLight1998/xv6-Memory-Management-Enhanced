@@ -546,3 +546,8 @@ void pagefault(uint err_code)
   else
     panic("Pagefault. Reference count error.");
 }
+
+void swappage(uint addr)
+{
+  //todo
+}

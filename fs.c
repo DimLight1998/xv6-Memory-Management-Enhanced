@@ -669,3 +669,27 @@ nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
 }
+
+int swapalloc(struct proc *p)
+{
+  //todo
+  return 0;
+}
+
+int swapdealloc(struct proc *p)
+{
+  //todo
+  return 0;
+}
+
+int swapread(struct proc *p, char *buf, uint offset, uint size)
+{
+  //todo
+  return 0;
+}
+
+int swapwrite(struct proc *p, char *buf, uint offset, uint size)
+{
+  //todo
+  return 0;
+}
