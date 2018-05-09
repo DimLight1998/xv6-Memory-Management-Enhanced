@@ -92,30 +92,6 @@ atoi(const char *s)
   return n;
 }
 
-char *itoa(int i, char *s)
-{
-  char const digit[] = "0123456789";
-  char *p = s;
-  if (i < 0)
-  {
-    *p++ = '-';
-    i *= -1;
-  }
-  int shift = i;
-  do
-  {
-    ++p;
-    shift = shift / 10;
-  } while (shift);
-  *p = '\0';
-  do
-  {
-    *--p = digit[i % 10];
-    i = i / 10;
-  } while (i);
-  return s;
-}
-
 void*
 memmove(void *vdst, void *vsrc, int n)
 {
