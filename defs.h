@@ -168,6 +168,7 @@ void            syscall(void);
 // sysfile.c
 struct inode *  create(char *path, short type, short major, short minor);
 int             isdirempty(struct inode *dp);
+int             kunlink(char* path);
 
 // timer.c
 void            timerinit(void);
