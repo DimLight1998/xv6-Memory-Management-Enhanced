@@ -51,7 +51,7 @@ struct swap_page
   char* va;
   int age;
   uint swaploc;
-}
+};
 
 // Per-process state
 struct proc {

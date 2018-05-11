@@ -683,7 +683,7 @@ int swapalloc(struct proc *p)
 
   p->swapfile = filealloc();
   if (p->swapfile == 0)
-    panic("[ERROR] %s no swapfile.\n", p->name);
+    panic("[ERROR] No swapfile.\n");
 
   p->swapfile->ip = in;
   p->swapfile->type = FD_INODE;
