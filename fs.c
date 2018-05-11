@@ -20,6 +20,7 @@
 #include "fs.h"
 #include "buf.h"
 #include "file.h"
+#include "fcntl.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 static void itrunc(struct inode*);
@@ -672,24 +673,50 @@ nameiparent(char *path, char *name)
 
 int swapalloc(struct proc *p)
 {
-  //todo
+  char path[20];
+  memmove(path, "./swap", 6);
+  itoa(p->pid, path + 6);
+
+  begin_op();
+  struct inode *in = create(path, T_FILE, 0, 0);
+  iunlock(in);
+
+  p->swapfile = filealloc();
+  if (p->swapfile == 0)
+    panic("[ERROR] %s no swapfile.\n", p->name);
+
+  p->swapfile->ip = in;
+  p->swapfile->type = FD_INODE;
+  p->swapfile->off = 0;
+  p->swapfile->readable = O_WRONLY;
+  p->swapfile->writable = O_RDWR;
+
+  end_op();
+
   return 0;
 }
 
 int swapdealloc(struct proc *p)
 {
-  //todo
-  return 0;
+  char path[20];
+  memmove(path, "./swap", 6);
+  itoa(p->pid, path + 6);
+
+  if (0 == p->swapfile)
+    return -1;
+  fileclose(p->swapfile);
+
+  return kunlink(path);
 }
 
 int swapread(struct proc *p, char *buf, uint offset, uint size)
 {
-  //todo
-  return 0;
+  p->swapfile->off = offset;
+  return fileread(p->swapfile, buf, size);
 }
 
 int swapwrite(struct proc *p, char *buf, uint offset, uint size)
 {
-  //todo
-  return 0;
+  p->swapfile->off = offset;
+  return filewrite(p->swapfile, buf, size);
 }
