@@ -156,7 +156,7 @@ int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 char*           itoa(int i, char *s);
-
+int             kstrcmp(const char *p, const char *q);
 // syscall.c
 int             argint(int, int*);
 int             argptr(int, char**, int);

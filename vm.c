@@ -9,6 +9,8 @@
 #include "traps.h"
 #include "debugsw.h"
 
+#define SWAP_BUF_SIZE (PGSIZE / 4)    // Buffer size when swap.
+
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
@@ -218,8 +220,84 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
+void fifo_record(char *va, struct proc *curproc)
+{
+  int i;
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+    if (curproc->mem_pages[i].va == SLOT_USABLE)
+    {
+      curproc->mem_pages[i].va = va;
+      curproc->mem_pages[i].next = curproc->head;
+      curproc->head = &curproc->mem_pages[i];
+      return;
+    }
+
+  panic("[ERROR] No free slot in memory.");
+}
+
+// Add a new page to mem_pages.
+void record_page(char *va)
+{
+  struct proc *curproc = myproc();
+  fifo_record(va, curproc);
+  curproc->num_mem_pages++;
+}
+
+struct mem_page *fifo_write()
+{
+  int i;
+  struct mem_page *link, *last;
+  struct proc *curproc = myproc();
+
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+    if (curproc->swap_pages[i].va == SLOT_USABLE)
+    {
+      // Find the last record in mem_pages,
+      // then swap it out.
+      link = curproc->head;
+      if (link == 0 || link->next == 0)
+        panic("Only 0 or 1 page in memory.");
+      while (link->next->next != 0)
+        link = link->next;
+      last = link->next;
+      link->next = 0;
+
+      // Swap the page out, write it to swapfile.
+      // The record in swapfile and swap_pages is in the same order.
+      curproc->swap_pages[i].va = last->va;
+      if (swapwrite(curproc, (char *)PTE_ADDR(last->va), i * PGSIZE, PGSIZE) == 0)
+        return 0;
+
+      // Free the page pointed by last - it has been swapped out and can be reused.
+      pte_t *pte = walkpgdir(curproc->pgdir, (void *)last->va, 0);
+      if (!(*pte))
+        panic("[ERROR] [fifo_write] PTE empty.");
+      kfree((char *)(P2V_WO(PTE_ADDR(*pte))));
+      *pte = PTE_W | PTE_U | PTE_PG;
+
+      curproc->num_swap_pages++;
+
+      // Refresh page dir.
+      lcr3(V2P(curproc->pgdir));
+
+      // Return the freed slot.
+      return last;
+    }
+
+  panic("[ERROR] No free slot in storage.");
+}
+
+// Swap out a page from mem_pages to swap_pages.
+struct mem_page *write_page(char *va)
+{
+  return fifo_write();
+}
+
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
+
+// We are using it to allocate memory from oldsz to newsz.
+// Memory is not continuous now due to stack auto growth.
 int
 allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
@@ -228,6 +306,10 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   struct proc* curproc = myproc();
   int stack_reserved = USERTOP - curproc->stack_size - PGSIZE;
 
+  uint newpage_allocated = 0;
+  struct mem_page* l;
+
+  // Check args.
   if (curproc->stack_grow == 1)
   {
     // An empty page is reserved between stack and heap.
@@ -249,12 +331,36 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
+
+    // Check if we have enough space to put the page in memory.
+    if (curproc->num_mem_pages >= MAX_PHYS_PAGES)
+    {
+      // Swap out page at oldsz.
+      //? What if oldsz has already been in swapfile?
+      //! Error when allocating stack memory. Fix that.
+      if ((l = write_page((char *)a)) == 0)
+        panic("[ERROR] Cannot write to swapfile.");
+
+      //! These code are for FIFO only.
+      l->va = (char *)a;
+      l->next = curproc->head;
+      curproc->head = l;
+
+      // No new page in memory will be used
+      // (A page will be reused), mark that.
+      newpage_allocated = 0;
+    }
+
     mem = kalloc();
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
       return 0;
     }
+
+    if (newpage_allocated)
+      record_page((char *)a);
+
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
@@ -275,6 +381,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   pte_t *pte;
   uint a, pa;
+  int i;
+  struct proc* curproc = myproc();
 
   if(newsz >= oldsz)
     return oldsz;
@@ -288,9 +396,50 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
+
+      // If the page is in mem_pages, clear it.
+      if (curproc->pgdir == pgdir)
+      {
+        for (i = 0; i < MAX_PHYS_PAGES; i++)
+          if (curproc->mem_pages[i].va == (char *)a)
+            goto SLOT_FOUND;
+        panic("[ERROR] deallocuvm (entry not found (memory)).");
+      SLOT_FOUND:
+        curproc->mem_pages[i].va = SLOT_USABLE;
+
+        if (curproc->head == &curproc->mem_pages[i])
+          curproc->head = curproc->mem_pages[i].next;
+        else
+        {
+          struct mem_page *l = curproc->head;
+          while (l->next != &curproc->mem_pages[i])
+            l = l->next;
+          l->next = curproc->mem_pages[i].next;
+        }
+        curproc->mem_pages[i].next = 0;
+        curproc->num_mem_pages--;
+      }
+
       char *v = P2V(pa);
       kfree(v);
       *pte = 0;
+    }
+    // Maybe the page is not presented by is in swapfile.
+    else if((*pte&PTE_PG)&&curproc->pgdir == pgdir)
+    {
+      for(i = 0;i<MAX_PHYS_PAGES;i++)
+      if(curproc->swap_pages[i].va == (char*) a)
+      {
+        curproc->swap_pages[i].va = SLOT_USABLE;
+
+        //! not used in FIFO.
+        curproc->swap_pages[i].age = 0;
+        curproc->swap_pages[i].swaploc = 0;
+
+        curproc->num_swap_pages--;
+        return newsz;
+      }
+      panic("[ERROR] deallocuvm (entry not found (swap)).");
     }
   }
   return newsz;
@@ -330,6 +479,9 @@ clearpteu(pde_t *pgdir, char *uva)
 
 // Given a parent process's page table, create a copy
 // of it for a child.
+
+// This function has been modified.
+// (Copy on write and stack auto growth.)
 pde_t*
 copyuvm(pde_t *pgdir, uint sz)
 {
@@ -348,8 +500,14 @@ copyuvm(pde_t *pgdir, uint sz)
 
     // Don't know why need to ignore the test.
     // Run "cat README | grep run" to see difference.
-    if(!(*pte & PTE_P))
+    if(!(*pte & PTE_P) && !(*pte & PTE_PG))
       continue;
+    if (*pte & PTE_PG)
+    {
+      pte = walkpgdir(d, (void *)i, 1);
+      *pte = PTE_U | PTE_W | PTE_PG;
+      continue;
+    }
 
     *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
@@ -365,8 +523,14 @@ copyuvm(pde_t *pgdir, uint sz)
   {
     if ((pte = walkpgdir(pgdir, (void *)i, 0)) == 0)
       panic("copyuvm: pte should exist");
-    if (!(*pte & PTE_P))
+    if (!(*pte & PTE_P) && !(*pte & PTE_PG))
       continue;
+    if (*pte & PTE_PG)
+    {
+      pte = walkpgdir(d, (void *)i, 1);
+      *pte = PTE_U | PTE_W | PTE_PG;
+      continue;
+    }
 
     *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
@@ -434,6 +598,7 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 // Blank page.
 
 
+//todo Refactor this messy code.
 void pagefault(uint err_code)
 {
   uint va = rcr2();
@@ -444,11 +609,23 @@ void pagefault(uint err_code)
 
   // If the page fault is caused by a non-present page,
   // should be due to lazy allocation or null pointer protection,
-  // or stack needing growth.
+  // or stack needing growth, or due to be swapped out.
   // Otherwise, it should be due to protection violation (copy on write).
   // If the page fault is caused by kernel, it should be handled too.
   if (!(err_code & PGFLT_P))
   {
+    // Used by swapping.
+    pte_t* pte = &curproc->pgdir[PDX(va)];
+    if(((*pte) & PTE_P) != 0)
+    {
+      // If the page is swapped out, swap it in.
+      if(((uint*)PTE_ADDR(P2V(*pte)))[PTX(va)] & PTE_PG) 
+      {
+        swappage(PTE_ADDR(va));
+        return;
+      }
+    }
+
     // If va is less than PGSIZE, this is a null pointer.
     if (va < PGSIZE)
     {
@@ -547,7 +724,72 @@ void pagefault(uint err_code)
     panic("Pagefault. Reference count error.");
 }
 
+void fifo_swap(uint addr)
+{
+  int i, j;
+  char buf[SWAP_BUF_SIZE];
+  pte_t *pte_in, *pte_out;
+  struct proc *curproc = myproc();
+
+  // Find the last record in mem_pages.
+  struct mem_page *link = curproc->head;
+  struct mem_page *last;
+  if (link == 0 || link->next == 0)
+    panic("[ERROR] Only 0 or 1 pages in memory.");
+  while (link->next->next != 0)
+    link = link->next;
+  last = link->next;
+  link->next = 0;
+
+  // Locate the PTE of the page to be swapped out.
+  pte_in = walkpgdir(curproc->pgdir, (void *)last->va, 0);
+  if (!*pte_in)
+    panic("[ERROR] A record is in mem_pages but not in pgdir.");
+
+  // Find the record of the page to be swapped in in swap_pages.
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+    if (curproc->swap_pages[i].va == (char *)PTE_ADDR(addr))
+      goto SLOT_FOUND;
+  panic("[ERROR] Should found a record in swapfile!");
+
+  // Perform swap.
+SLOT_FOUND:
+  curproc->swap_pages[i].va = last->va;
+  pte_out = walkpgdir(curproc->pgdir, (void *)addr, 0);
+  if (!*pte_out)
+    panic("[ERROR] A record should be in pgdir!");
+  *pte_out = PTE_ADDR(*pte_in) | PTE_U | PTE_W | PTE_P;
+
+  // Real swap - read from swapfile and write to swap file.
+  for (j = 0; j < 4; j++)
+  {
+    int loc = (i * PGSIZE) + (SWAP_BUF_SIZE * j);
+    int offset = SWAP_BUF_SIZE * j;
+    memset(buf, 0, SWAP_BUF_SIZE);
+    swapread(curproc, buf, loc, SWAP_BUF_SIZE);
+    swapwrite(curproc, (char *)(P2V_WO(PTE_ADDR(*pte_in)) + offset), loc, SWAP_BUF_SIZE);
+    memmove((void *)(PTE_ADDR(addr) + offset), (void *)buf, SWAP_BUF_SIZE);
+  }
+
+  *pte_in = PTE_U | PTE_W | PTE_PG;
+  last->next = curproc->head;
+  curproc->head = last;
+  last->va = (char *)PTE_ADDR(addr);
+}
+
 void swappage(uint addr)
 {
-  //todo
+  struct proc*curproc = myproc();
+
+  //? Why should we do this?
+  if (kstrcmp(curproc->name, "init") == 0 || kstrcmp(curproc->name, "sh") == 0)
+  {
+    curproc->num_mem_pages++;
+    return;
+  }
+
+  fifo_swap(addr);
+
+  // Refresh page dir.
+  lcr3(V2P(curproc->pgdir));
 }

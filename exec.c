@@ -38,6 +38,41 @@ exec(char *path, char **argv)
   if((pgdir = setupkvm()) == 0)
     goto bad;
 
+  // Save data for swapping, restore them later.
+  // Normalily we can just clear them, but if exec failed,
+  // we need to be able to restore.
+  int num_mem_pages = curproc->num_mem_pages;
+  int num_swap_pages = curproc->num_swap_pages;
+  struct mem_page mem_pages[MAX_PHYS_PAGES];
+  struct swap_page swap_pages[MAX_PHYS_PAGES];
+
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+  {
+    mem_pages[i].va = curproc->mem_pages[i].va;
+    mem_pages[i].age = curproc->mem_pages[i].age;
+    mem_pages[i].next = curproc->mem_pages[i].next;
+    mem_pages[i].prev = curproc->mem_pages[i].prev;
+
+    swap_pages[i].va = curproc->swap_pages[i].va;
+    swap_pages[i].age = curproc->swap_pages[i].age;
+    swap_pages[i].swaploc = curproc->swap_pages[i].swaploc;
+
+    curproc->mem_pages[i].va = SLOT_USABLE;
+    curproc->mem_pages[i].age = 0;
+    curproc->mem_pages[i].next = 0;
+    curproc->mem_pages[i].prev = 0;
+    curproc->swap_pages[i].va = SLOT_USABLE;
+    curproc->swap_pages[i].age = 0;
+    curproc->swap_pages[i].swaploc = 0;
+  }
+
+  struct mem_page* head = curproc->head;
+  struct mem_page* tail = curproc->tail;
+  curproc->num_mem_pages = 0;
+  curproc->num_swap_pages = 0;
+  curproc->head = 0;
+  curproc->tail = 0;
+
   // Load program into memory.
   sz = PGSIZE;
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -103,6 +138,11 @@ exec(char *path, char **argv)
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
+
+  // Refresh swapfile.
+  swapdealloc(curproc);
+  swapalloc(curproc);
+
   switchuvm(curproc);
   freevm(oldpgdir);
   return 0;
@@ -114,5 +154,24 @@ exec(char *path, char **argv)
     iunlockput(ip);
     end_op();
   }
+
+  // Restore data for swapping
+  curproc->num_mem_pages = num_mem_pages;
+  curproc->num_swap_pages = num_swap_pages;
+  curproc->head = head;
+  curproc->tail = tail;
+
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+  {
+    curproc->mem_pages[i].va = mem_pages[i].va;
+    curproc->mem_pages[i].age = mem_pages[i].age;
+    curproc->mem_pages[i].next = mem_pages[i].next;
+    curproc->mem_pages[i].prev = mem_pages[i].prev;
+
+    curproc->swap_pages[i].va = swap_pages[i].va;
+    curproc->swap_pages[i].age = swap_pages[i].age;
+    curproc->swap_pages[i].swaploc = swap_pages[i].swaploc;
+  }
+
   return -1;
 }

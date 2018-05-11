@@ -126,3 +126,10 @@ char *itoa(int i, char *s)
   } while (i);
   return s;
 }
+
+int kstrcmp(const char *p, const char *q)
+{
+  while (*p && *p == *q)
+    p++, q++;
+  return (uchar)*p - (uchar)*q;
+}
