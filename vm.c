@@ -336,8 +336,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if (curproc->num_mem_pages >= MAX_PHYS_PAGES)
     {
       // Swap out page at oldsz.
-      //? What if oldsz has already been in swapfile?
-      //! Error when allocating stack memory. Fix that.
+      //! At least in fifo, the arg passed to write_page is unimportant.
       if ((l = write_page((char *)a)) == 0)
         panic("[ERROR] Cannot write to swapfile.");
 
