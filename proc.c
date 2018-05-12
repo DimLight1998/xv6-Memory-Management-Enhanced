@@ -118,7 +118,6 @@ found:
   {
     p->mem_pages[i].va = SLOT_USABLE;
     p->mem_pages[i].next = 0;
-    p->mem_pages[i].prev = 0;
     p->mem_pages[i].age = 0;
     p->swap_pages[i].va = SLOT_USABLE;
     p->swap_pages[i].swaploc = 0;
@@ -128,7 +127,6 @@ found:
   p->num_mem_pages = 0;
   p->num_swap_pages = 0;
   p->head = 0;
-  p->tail = 0;
 
   return p;
 }
@@ -244,7 +242,7 @@ fork(void)
   int offset = 0;
   int nread = 0;
 
-  if (kstrcmp(curproc->name, "init") == 0 || kstrcmp(curproc->name, "sh") == 0)
+  if (kstrcmp(curproc->name, "init") != 0 && kstrcmp(curproc->name, "sh") != 0)
     while ((nread = swapread(curproc, buf, offset, PGSIZE / 2)) != 0)
     {
       if (swapwrite(np, buf, offset, nread) == -1)
@@ -263,18 +261,16 @@ fork(void)
   }
 
   for (i = 0; i < MAX_PHYS_PAGES; i++)
-    for (j = 0; j < MAX_PHYS_PAGES; ++j)
-      if (np->mem_pages[j].va == curproc->mem_pages[i].next->va)
+    for (j = 0; j < MAX_PHYS_PAGES; j++)
+    {
+      if ((curproc->mem_pages[i].next != 0) && np->mem_pages[j].va == curproc->mem_pages[i].next->va)
         np->mem_pages[i].next = &np->mem_pages[j];
-  if (np->mem_pages[j].va == curproc->mem_pages[i].prev->va)
-    np->mem_pages[i].prev = &np->mem_pages[j];
+    }
 
   for (i = 0; i < MAX_PHYS_PAGES; i++)
   {
     if (curproc->head->va == np->mem_pages[i].va)
       np->head = &np->mem_pages[i];
-    if (curproc->tail->va == np->mem_pages[i].va)
-      np->tail = &np->mem_pages[i];
   }
 
   acquire(&ptable.lock);

@@ -306,7 +306,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   struct proc* curproc = myproc();
   int stack_reserved = USERTOP - curproc->stack_size - PGSIZE;
 
-  uint newpage_allocated = 0;
+  uint newpage_allocated = 1;
   struct mem_page* l;
 
   // Check args.

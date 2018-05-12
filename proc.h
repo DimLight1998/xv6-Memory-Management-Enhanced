@@ -43,7 +43,6 @@ struct mem_page
   char* va;
   int age;
   struct mem_page* next;
-  struct mem_page* prev;
 };
 
 struct swap_page
@@ -81,5 +80,4 @@ struct proc {
   struct mem_page mem_pages[MAX_PHYS_PAGES];
   struct swap_page swap_pages[MAX_PHYS_PAGES];
   struct mem_page* head;
-  struct mem_page* tail;
 };

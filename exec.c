@@ -51,7 +51,6 @@ exec(char *path, char **argv)
     mem_pages[i].va = curproc->mem_pages[i].va;
     mem_pages[i].age = curproc->mem_pages[i].age;
     mem_pages[i].next = curproc->mem_pages[i].next;
-    mem_pages[i].prev = curproc->mem_pages[i].prev;
 
     swap_pages[i].va = curproc->swap_pages[i].va;
     swap_pages[i].age = curproc->swap_pages[i].age;
@@ -60,18 +59,15 @@ exec(char *path, char **argv)
     curproc->mem_pages[i].va = SLOT_USABLE;
     curproc->mem_pages[i].age = 0;
     curproc->mem_pages[i].next = 0;
-    curproc->mem_pages[i].prev = 0;
     curproc->swap_pages[i].va = SLOT_USABLE;
     curproc->swap_pages[i].age = 0;
     curproc->swap_pages[i].swaploc = 0;
   }
 
   struct mem_page* head = curproc->head;
-  struct mem_page* tail = curproc->tail;
   curproc->num_mem_pages = 0;
   curproc->num_swap_pages = 0;
   curproc->head = 0;
-  curproc->tail = 0;
 
   // Load program into memory.
   sz = PGSIZE;
@@ -159,14 +155,12 @@ exec(char *path, char **argv)
   curproc->num_mem_pages = num_mem_pages;
   curproc->num_swap_pages = num_swap_pages;
   curproc->head = head;
-  curproc->tail = tail;
 
   for (i = 0; i < MAX_PHYS_PAGES; i++)
   {
     curproc->mem_pages[i].va = mem_pages[i].va;
     curproc->mem_pages[i].age = mem_pages[i].age;
     curproc->mem_pages[i].next = mem_pages[i].next;
-    curproc->mem_pages[i].prev = mem_pages[i].prev;
 
     curproc->swap_pages[i].va = swap_pages[i].va;
     curproc->swap_pages[i].age = swap_pages[i].age;
