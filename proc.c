@@ -75,6 +75,7 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
+  int i;
 
   acquire(&ptable.lock);
 
@@ -111,6 +112,21 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+
+  // Set up data for page swapping.
+  for(i = 0;i<MAX_PHYS_PAGES;i++)
+  {
+    p->mem_pages[i].va = SLOT_USABLE;
+    p->mem_pages[i].next = 0;
+    p->mem_pages[i].age = 0;
+    p->swap_pages[i].va = SLOT_USABLE;
+    p->swap_pages[i].swaploc = 0;
+    p->swap_pages[i].age = 0;
+  }
+
+  p->num_mem_pages = 0;
+  p->num_swap_pages = 0;
+  p->head = 0;
 
   return p;
 }
@@ -184,7 +200,7 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid;
+  int i, j, pid;
   struct proc *np;
   struct proc *curproc = myproc();
 
@@ -205,6 +221,10 @@ fork(void)
   np->stack_size = curproc->stack_size;
   *np->tf = *curproc->tf;
 
+  // Copy data for swapping.
+  np->num_mem_pages = curproc->num_mem_pages;
+  np->num_swap_pages = curproc->num_swap_pages;
+
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -216,6 +236,42 @@ fork(void)
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
   pid = np->pid;
+
+  swapalloc(np);
+  char buf[PGSIZE / 2] = "";
+  int offset = 0;
+  int nread = 0;
+
+  if (kstrcmp(curproc->name, "init") != 0 && kstrcmp(curproc->name, "sh") != 0)
+    while ((nread = swapread(curproc, buf, offset, PGSIZE / 2)) != 0)
+    {
+      if (swapwrite(np, buf, offset, nread) == -1)
+        panic("[ERROR] Copying swapfile in fork().");
+      offset += nread;
+    }
+
+  // Copy data for swapping.
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+  {
+    np->mem_pages[i].va = curproc->mem_pages[i].va;
+    np->mem_pages[i].age = curproc->mem_pages[i].age;
+    np->swap_pages[i].age = curproc->swap_pages[i].age;
+    np->swap_pages[i].va = curproc->swap_pages[i].va;
+    np->swap_pages[i].swaploc = curproc->swap_pages[i].swaploc;
+  }
+
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+    for (j = 0; j < MAX_PHYS_PAGES; j++)
+    {
+      if ((curproc->mem_pages[i].next != 0) && np->mem_pages[j].va == curproc->mem_pages[i].next->va)
+        np->mem_pages[i].next = &np->mem_pages[j];
+    }
+
+  for (i = 0; i < MAX_PHYS_PAGES; i++)
+  {
+    if (curproc->head->va == np->mem_pages[i].va)
+      np->head = &np->mem_pages[i];
+  }
 
   acquire(&ptable.lock);
 
@@ -246,6 +302,10 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
+
+  // Remove swap file.
+  if (swapdealloc(curproc) != 0)
+    panic("[ERROR] Remove swap file error.");
 
   begin_op();
   iput(curproc->cwd);

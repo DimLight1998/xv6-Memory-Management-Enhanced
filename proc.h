@@ -34,6 +34,24 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// Swap.
+// Set this value too high will cause the size of kernel larger than 4MB.
+//todo Fix this.
+#define MAX_PHYS_PAGES 20
+struct mem_page
+{
+  char* va;
+  int age;
+  struct mem_page* next;
+};
+
+struct swap_page
+{
+  char* va;
+  int age;
+  uint swaploc;
+};
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -55,4 +73,11 @@ struct proc {
 
   uint stack_size;             // Process stack size.
   int stack_grow;              // Is the stack growing.
+
+  int num_mem_pages;
+  int num_swap_pages;
+  struct file* swapfile;
+  struct mem_page mem_pages[MAX_PHYS_PAGES];
+  struct swap_page swap_pages[MAX_PHYS_PAGES];
+  struct mem_page* head;
 };
