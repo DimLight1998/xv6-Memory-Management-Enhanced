@@ -48,8 +48,6 @@ struct mem_page
 struct swap_page
 {
   char* va;
-  int age;
-  uint swaploc;
 };
 
 // Per-process state

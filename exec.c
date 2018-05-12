@@ -53,15 +53,11 @@ exec(char *path, char **argv)
     mem_pages[i].next = curproc->mem_pages[i].next;
 
     swap_pages[i].va = curproc->swap_pages[i].va;
-    swap_pages[i].age = curproc->swap_pages[i].age;
-    swap_pages[i].swaploc = curproc->swap_pages[i].swaploc;
 
     curproc->mem_pages[i].va = SLOT_USABLE;
     curproc->mem_pages[i].age = 0;
     curproc->mem_pages[i].next = 0;
     curproc->swap_pages[i].va = SLOT_USABLE;
-    curproc->swap_pages[i].age = 0;
-    curproc->swap_pages[i].swaploc = 0;
   }
 
   struct mem_page* head = curproc->head;
@@ -163,8 +159,6 @@ exec(char *path, char **argv)
     curproc->mem_pages[i].next = mem_pages[i].next;
 
     curproc->swap_pages[i].va = swap_pages[i].va;
-    curproc->swap_pages[i].age = swap_pages[i].age;
-    curproc->swap_pages[i].swaploc = swap_pages[i].swaploc;
   }
 
   return -1;

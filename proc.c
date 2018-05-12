@@ -120,8 +120,6 @@ found:
     p->mem_pages[i].next = 0;
     p->mem_pages[i].age = 0;
     p->swap_pages[i].va = SLOT_USABLE;
-    p->swap_pages[i].swaploc = 0;
-    p->swap_pages[i].age = 0;
   }
 
   p->num_mem_pages = 0;
@@ -255,9 +253,7 @@ fork(void)
   {
     np->mem_pages[i].va = curproc->mem_pages[i].va;
     np->mem_pages[i].age = curproc->mem_pages[i].age;
-    np->swap_pages[i].age = curproc->swap_pages[i].age;
     np->swap_pages[i].va = curproc->swap_pages[i].va;
-    np->swap_pages[i].swaploc = curproc->swap_pages[i].swaploc;
   }
 
   for (i = 0; i < MAX_PHYS_PAGES; i++)

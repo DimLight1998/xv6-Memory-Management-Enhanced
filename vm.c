@@ -431,10 +431,6 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       {
         curproc->swap_pages[i].va = SLOT_USABLE;
 
-        //! not used in FIFO.
-        curproc->swap_pages[i].age = 0;
-        curproc->swap_pages[i].swaploc = 0;
-
         curproc->num_swap_pages--;
         return newsz;
       }
