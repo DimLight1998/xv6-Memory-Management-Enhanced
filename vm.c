@@ -11,6 +11,16 @@
 
 #define SWAP_BUF_SIZE (PGSIZE / 4)    // Buffer size when swap.
 
+struct swap_offset_desc
+{
+  // If is_high is true, the addr is in stack.
+  // Otherwise it's in heap/data/text.
+  int is_high;
+
+  // Offset used in swapping.
+  uint offset;
+};
+
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
@@ -772,6 +782,43 @@ SLOT_FOUND:
   last->va = (char *)PTE_ADDR(addr);
 }
 
+// Return whether the address is in high part of the memory space.
+// True if the address is in stack.
+// False if it's in heap/text/data.
+int is_high_memory(struct proc *p, uint vaddr)
+{
+  vaddr = PGROUNDDOWN(vaddr);
+  if ((vaddr >= p->sz && vaddr < USERTOP - p->stack_size) || vaddr >= USERTOP)
+    panic("[ERROR] High memory check: invalid virt addr.");
+  if (vaddr < p->sz)
+    return 0;
+  if (vaddr >= USERTOP - p->stack_size)
+    return 1;
+  panic("[ERROR] High memory check: invalid virt addr. (2)");
+}
+
+// Get the offset descriptor to be used in memory swapping.
+// `vaddr` will be aligned inside the function.
+static struct swap_offset_desc
+get_swap_offset(struct proc *p, uint vaddr)
+{
+  vaddr = PGROUNDDOWN(vaddr);
+  int is_high = is_high_memory(p, vaddr);
+  struct swap_offset_desc ret;
+  if (is_high)
+  {
+    ret.is_high = 1;
+    ret.offset = USERTOP - PGSIZE - vaddr;
+  }
+  else
+  {
+    ret.is_high = 0;
+    ret.offset = vaddr;
+  }
+
+  return ret;
+}
+
 void swappage(uint addr)
 {
   struct proc*curproc = myproc();
@@ -787,4 +834,7 @@ void swappage(uint addr)
 
   // Refresh page dir.
   lcr3(V2P(curproc->pgdir));
+
+  //! remove
+  get_swap_offset(0, 0);
 }

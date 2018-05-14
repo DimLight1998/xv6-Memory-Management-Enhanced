@@ -26,6 +26,183 @@ pinit(void)
   initlock(&ptable.lock, "ptable");
 }
 
+
+// Initialize the swap table. It will set all relating fields to zero in process table.
+void swaptableinit(void)
+{
+  int i;
+  struct proc *thisproc;
+  acquire(&ptable.lock);
+  for (i = 0; i < NPROC; i++)
+  {
+    thisproc = &ptable.proc[i];
+    thisproc->num_mem_pages = 0;
+    thisproc->memstab_head = 0;
+    thisproc->memstab_tail = 0;
+    thisproc->swapstab_high_head = 0;
+    thisproc->swapstab_high_tail = 0;
+    thisproc->swapstab_low_head = 0;
+    thisproc->swapstab_low_tail = 0;
+    thisproc->swapfile_high = 0;
+    thisproc->swapfile_low = 0;
+  }
+  release(&ptable.lock);
+}
+
+// Clear one memory swap table page. If clear link is set to true,
+// it will also clear links (pointer to prev page and next page).
+void memstab_page_clear(struct memstab_page *page, uint clear_link)
+{
+  int i;
+  for (i = 0; i < NUM_MEMSTAB_PAGE_ENTRIES; i++)
+  {
+    page->entries[i].age = 0;
+    page->entries[i].next = 0;
+    page->entries[i].vaddr = SLOT_USABLE;
+  }
+  if (clear_link)
+  {
+    page->next = 0;
+    page->prev = 0;
+  }
+}
+
+// Allocate one memory swap table page. Links are set to NULL initially.
+struct memstab_page *memstab_page_alloc(void)
+{
+  struct memstab_page *mstabpg;
+  if ((mstabpg = (struct memstab_page *)kalloc()) == 0)
+    return 0;
+  memstab_page_clear(mstabpg, 1);
+  return mstabpg;
+}
+
+// Clear a process's memory swap table. But the memory is not released.
+// This function is designed for reuse the allocated memory.
+void memstab_clear(struct proc *pr)
+{
+  struct memstab_page *p = pr->memstab_head;
+  while (p != 0)
+  {
+    memstab_page_clear(p, 0);
+    p = p->next;
+  }
+}
+
+// Allocate a full memory swap table, return its head address.
+// The swaptable is linked.
+struct memstab_page * memstab_alloc(void)
+{
+  int i;
+  struct memstab_page *slow, *fast, *head;
+  if ((slow = memstab_page_alloc()) == 0)
+    return 0;
+  head = slow;
+  for (i = 0; i < NUM_MEMSTAB_PAGES - 1; i++)
+  {
+    if ((fast = memstab_page_alloc()) == 0)
+      return 0;
+    slow->next = fast;
+    fast->prev = slow;
+    slow = fast;
+  }
+
+  return head;
+}
+
+// Clear one swapped swap table page. If clear_link is set, it will also clear pointers to prev and next page.
+void swapstab_page_clear(struct swapstab_page *page, uint clear_link)
+{
+  int i;
+  for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
+    page->entries[i].vaddr = SLOT_USABLE;
+  if (clear_link)
+  {
+    page->next = 0;
+    page->prev = 0;
+  }
+}
+
+// Allocate one swapped swap table page. Links are NULL initially.
+struct swapstab_page* swapstab_page_alloc(void)
+{
+  struct swapstab_page *sstabpg;
+  if ((sstabpg = (struct swapstab_page *)kalloc()) == 0)
+    return 0;
+  swapstab_page_clear(sstabpg, 1);
+  return sstabpg;
+}
+
+// Clear the swapped swap table for a process. 
+// Preserve space and link relation.
+void swapstab_clear(struct proc *pr)
+{
+  struct swapstab_page *p;
+
+  p = pr->swapstab_high_head;
+  while (p != 0)
+  {
+    swapstab_page_clear(p, 0);
+    p = p->next;
+  }
+
+  p = pr->swapstab_low_head;
+  while (p != 0)
+  {
+    swapstab_page_clear(p, 0);
+    p = p->next;
+  }
+}
+
+static int swapstab_growpage(struct proc *pr, uint high)
+{
+  struct swapstab_page *head, *tail;
+  if (high)
+  {
+    head = pr->swapstab_high_head;
+    tail = pr->swapstab_high_tail;
+  }
+  else
+  {
+    head = pr->swapstab_low_head;
+    tail = pr->swapstab_low_tail;
+  }
+
+  // Start growing.
+  if(head == 0)
+  {
+    // This process has no swapped swap page.
+    if((head = swapstab_page_alloc()) == 0)
+      return -1;
+    tail = head;
+  }
+  else
+  {
+    // This process has some swapped swap page.
+    struct swapstab_page* temp = tail;
+    if ((tail = swapstab_page_alloc()) == 0)
+      return -1;
+    temp->next = tail;
+    tail->prev = temp;
+  }
+
+  return 0;
+}
+
+// Grow high memory swapped swap table by one page.
+// Returns 0 on success, otherwise -1.
+int swapstab_growpage_high(struct proc*pr)
+{
+  swapstab_growpage(pr, 1);
+}
+
+// Grow low memory swapped swap table by one page.
+// Returns 0 on success, otherwise -1.
+int swapstab_growpage_low(struct proc*pr)
+{
+  swapstab_growpage(pr, 0);
+}
+
 // Must be called with interrupts disabled
 int
 cpuid() {
@@ -114,6 +291,7 @@ found:
   p->context->eip = (uint)forkret;
 
   // Set up data for page swapping.
+  //todo remove <
   for(i = 0;i<MAX_PHYS_PAGES;i++)
   {
     p->mem_pages[i].va = SLOT_USABLE;
@@ -125,6 +303,20 @@ found:
   p->num_mem_pages = 0;
   p->num_swap_pages = 0;
   p->head = 0;
+  //todo remove >
+
+  // Set up mem swap table if not exist.
+  // Otherwise clear it.
+  //todo do something here.
+  if (p->memstab == 0)
+  {
+    if((p->memstab = memstab_alloc()) == 0)
+      return 0;
+  }
+  else
+  {
+    memstab_clear(p);
+  }
 
   return p;
 }
