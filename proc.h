@@ -47,7 +47,7 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 // Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
 #define NUM_MEMSTAB_PAGES 25
 
-#define NUM_MEMSTAB_ENTRIES_CAPACITY 4250
+#define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
 
 
 struct memstab_page_entry
