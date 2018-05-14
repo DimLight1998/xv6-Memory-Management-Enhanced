@@ -41,8 +41,13 @@ exec(char *path, char **argv)
   // Save data for swapping, restore them later.
   // Normalily we can just clear them, but if exec failed,
   // we need to be able to restore.
-  //todo Need a mechanism to save the swap table and restore it if exec fails.
 
+  memstab_clear(curproc);
+  swapstab_clear(curproc);
+  curproc->num_mem_entries = 0;
+  
+  //todo Need a mechanism to save the swap table and restore it if exec fails.
+  
   // Load program into memory.
   sz = PGSIZE;
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){

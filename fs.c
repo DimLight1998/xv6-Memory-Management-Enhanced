@@ -21,6 +21,7 @@
 #include "buf.h"
 #include "file.h"
 #include "fcntl.h"
+#include "debugsw.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 static void itrunc(struct inode*);
@@ -673,6 +674,9 @@ nameiparent(char *path, char *name)
 
 int swapalloc(struct proc *p)
 {
+  if(SHOW_SWAPALLOC_ENTER)
+    cprintf("Entering swapalloc.\n");
+
   char path[20];
   struct inode* in;
 
@@ -714,11 +718,17 @@ int swapalloc(struct proc *p)
   p->swapfile_high->readable = O_WRONLY;
   p->swapfile_high->writable = O_RDWR;
 
+  if (SHOW_SWAPALLOC_LEAVE)
+    cprintf("Leaving swapalloc.\n");
+
   return 0;
 }
 
 int swapdealloc(struct proc *p)
 {
+  if (SHOW_SWAPDEALLOC_ENTER)
+    cprintf("Entering swapdealloc.\n");
+
   char path[20];
 
   // Close swapfile for low memory.
@@ -729,7 +739,8 @@ int swapdealloc(struct proc *p)
     return -1;
   fileclose(p->swapfile_low);
 
-  return kunlink(path);
+  if (kunlink(path) == -1)
+    return -1;
 
   // Close swapfile for high memory.
   memmove(path, "./.swaphi", 9);
@@ -739,18 +750,35 @@ int swapdealloc(struct proc *p)
     return -1;
   fileclose(p->swapfile_high);
 
+  if (SHOW_SWAPDEALLOC_LEAVE)
+    cprintf("Leaving swapdealloc.\n");
+
   return kunlink(path);
 }
 
 static int swapread(struct file* swapfile, char*buf, uint offset, uint size)
 {
+  if(SHOW_SWAPREAD_ENTER)
+    cprintf("Entering swapread.\n");
+
   swapfile->off = offset;
+
+  if(SHOW_SWAPREAD_LEAVE)
+    cprintf("Leaving swapread.\n");
+
   return fileread(swapfile, buf, size);
 }
 
 static int swapwrite(struct file* swapfile, char*buf, uint offset, uint size)
 {
+  if (SHOW_SWAPWRITE_ENTER)
+    cprintf("Entering swapwrite.\n");
+
   swapfile->off = offset;
+
+  if (SHOW_SWAPWRITE_LEAVE)
+    cprintf("Leaving swapwrite.\n");
+    
   return filewrite(swapfile, buf, size);
 }
 

@@ -87,6 +87,7 @@ void memstab_clear(struct proc *pr)
     memstab_page_clear(p, 0);
     p = p->next;
   }
+  pr->num_mem_entries = 0;
 }
 
 // Allocate a full memory swap table, return its head address.
