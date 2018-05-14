@@ -300,7 +300,6 @@ void record_page(char *va)
 
 struct memstab_page_entry *fifo_write()
 {
-  int i;
   struct memstab_page_entry *link, *last;
   struct proc *curproc = myproc();
 
@@ -312,7 +311,7 @@ struct memstab_page_entry *fifo_write()
   last = link;
   link->next = 0;
 
-  struct swap_offset_desc desc = get_swap_offset(curproc, last->vaddr);
+  struct swap_offset_desc desc = get_swap_offset(curproc, (uint)(last->vaddr));
   struct swapstab_page *curpage;
   int i = 0, pg = 0;
 
@@ -359,9 +358,11 @@ struct memstab_page_entry *fifo_write()
 
   panic("[ERROR] SLOT OUT.");
 
+  pte_t *pte;
+
 SUCCESS:
   // Free the page pointed by last - it has been swapped out and can be reused.
-  pte_t *pte = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
+  pte = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
   if (!(*pte))
     panic("[ERROR] [fifo_write] PTE empty.");
   kfree((char *)(P2V_WO(PTE_ADDR(*pte))));
@@ -858,7 +859,7 @@ void fifo_swap(uint addr)
   if (!*pte_in)
     panic("[ERROR] A record is in memstab but not in pgdir.");
 
-  struct swap_offset_desc desc = get_swap_offset(curproc, last->vaddr);
+  struct swap_offset_desc desc = get_swap_offset(curproc, (uint)(last->vaddr));
   struct swapstab_page *curpg = 0;
   struct swapstab_page_entry *ent = 0;
   int (*read_func)(struct proc *, char *, uint, uint) = 0;
@@ -882,7 +883,7 @@ void fifo_swap(uint addr)
   while (curpg != 0)
   {
     for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
-      if (curpg->entries[i].vaddr == (char *)PTEADDR(addr))
+      if (curpg->entries[i].vaddr == (char *)PTE_ADDR(addr))
       {
         ent = &(curpg->entries[i]);
         offset += i * PGSIZE;
@@ -902,7 +903,6 @@ void fifo_swap(uint addr)
     panic("[ERROR] Should found a record in swapfile!");
 
   // Perform swap.
-SLOT_FOUND:
   ent->vaddr = last->vaddr;
 
   pte_out = walkpgdir(curproc->pgdir, (void *)addr, 0);

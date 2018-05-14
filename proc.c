@@ -191,16 +191,16 @@ static int swapstab_growpage(struct proc *pr, uint high)
 
 // Grow high memory swapped swap table by one page.
 // Returns 0 on success, otherwise -1.
-int swapstab_growpage_high(struct proc*pr)
+int swapstab_growpage_high(struct proc *pr)
 {
-  swapstab_growpage(pr, 1);
+  return swapstab_growpage(pr, 1);
 }
 
 // Grow low memory swapped swap table by one page.
 // Returns 0 on success, otherwise -1.
-int swapstab_growpage_low(struct proc*pr)
+int swapstab_growpage_low(struct proc *pr)
 {
-  swapstab_growpage(pr, 0);
+  return swapstab_growpage(pr, 0);
 }
 
 // Copy swap table (mem, low swapped, high swapped) from srcproc to dstproc.
@@ -333,7 +333,6 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
-  int i;
 
   acquire(&ptable.lock);
 
@@ -457,7 +456,7 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, j, pid;
+  int i, pid;
   struct proc *np;
   struct proc *curproc = myproc();
 
