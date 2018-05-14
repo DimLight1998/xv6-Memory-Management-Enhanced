@@ -193,14 +193,20 @@ static int swapstab_growpage(struct proc *pr, uint high)
 // Returns 0 on success, otherwise -1.
 int swapstab_growpage_high(struct proc *pr)
 {
-  return swapstab_growpage(pr, 1);
+  int res = swapstab_growpage(pr, 1);
+  if (res == 0)
+    pr->num_high_swapstab_pages++;
+  return res;
 }
 
 // Grow low memory swapped swap table by one page.
 // Returns 0 on success, otherwise -1.
 int swapstab_growpage_low(struct proc *pr)
 {
-  return swapstab_growpage(pr, 0);
+  int res = swapstab_growpage(pr, 0);
+  if (res == 0)
+    pr->num_low_swapstab_pages++;
+  return res;
 }
 
 // Copy swap table (mem, low swapped, high swapped) from srcproc to dstproc.
