@@ -36,7 +36,7 @@ void swaptableinit(void)
   for (i = 0; i < NPROC; i++)
   {
     thisproc = &ptable.proc[i];
-    thisproc->num_mem_pages = 0;
+    thisproc->num_mem_entries = 0;
     thisproc->memstab_head = 0;
     thisproc->memstab_tail = 0;
     thisproc->swapstab_high_head = 0;
@@ -203,6 +203,87 @@ int swapstab_growpage_low(struct proc*pr)
   swapstab_growpage(pr, 0);
 }
 
+// Copy swap table (mem, low swapped, high swapped) from srcproc to dstproc.
+// Don't preserve relative location in memory swap table.
+// Returns 0 on success, otherwise -1.
+int copy_stab(struct proc *dstproc, struct proc *srcproc)
+{
+  // Copy memory swap table.
+  memstab_clear(dstproc);
+  dstproc->num_mem_entries = srcproc->num_mem_entries;
+  dstproc->memqueue_head = 0;
+
+  struct memstab_page *curpg = dstproc->memstab_head;
+  int curpos = 0;
+  struct memstab_page_entry *cursrcent = srcproc->memqueue_head;
+  struct memstab_page_entry *olddstent = 0;
+
+  if (cursrcent != 0)
+    dstproc->memqueue_head = &(curpg->entries[curpos]);
+  while (cursrcent != 0)
+  {
+    if (olddstent != 0)
+      olddstent->next = &(curpg->entries[curpos]);
+    olddstent = &(curpg->entries[curpos]);
+    curpg->entries[curpos].age = cursrcent->age;
+    curpg->entries[curpos].vaddr = cursrcent->vaddr;
+
+    cursrcent = cursrcent->next;
+    curpos++;
+
+    if (curpos == NUM_MEMSTAB_PAGE_ENTRIES)
+    {
+      curpg = curpg->next;
+      curpos = 0;
+    }
+  }
+
+  // Copy swapped swap table.
+  int diff;
+  int i;
+  struct swapstab_page *srccurpg, *dstcurpg;
+
+  // Copy high swapped swap table.
+  diff = srcproc->num_high_swapstab_pages - dstproc->num_high_swapstab_pages;
+  while (diff > 0)
+  {
+    if (swapstab_growpage_high(dstproc) == 0)
+      return -1;
+    diff--;
+  }
+
+  srccurpg = srcproc->swapstab_high_head;
+  dstcurpg = dstproc->swapstab_high_head;
+  while (srccurpg != 0)
+  {
+    for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
+      dstcurpg->entries[i] = srccurpg->entries[i];
+    dstcurpg = dstcurpg->next;
+    srccurpg = srccurpg->next;
+  }
+
+  // Copy low swapped swap table.
+  diff = srcproc->num_low_swapstab_pages - dstproc->num_low_swapstab_pages;
+  while (diff > 0)
+  {
+    if (swapstab_growpage_low(dstproc) == 0)
+      return -1;
+    diff--;
+  }
+
+  srccurpg = srcproc->swapstab_low_head;
+  dstcurpg = dstproc->swapstab_low_head;
+  while (srccurpg != 0)
+  {
+    for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
+      dstcurpg->entries[i] = srccurpg->entries[i];
+    dstcurpg = dstcurpg->next;
+    srccurpg = srccurpg->next;
+  }
+
+  return 0;
+}
+
 // Must be called with interrupts disabled
 int
 cpuid() {
@@ -290,33 +371,19 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
-  // Set up data for page swapping.
-  //todo remove <
-  for(i = 0;i<MAX_PHYS_PAGES;i++)
-  {
-    p->mem_pages[i].va = SLOT_USABLE;
-    p->mem_pages[i].next = 0;
-    p->mem_pages[i].age = 0;
-    p->swap_pages[i].va = SLOT_USABLE;
-  }
-
-  p->num_mem_pages = 0;
-  p->num_swap_pages = 0;
-  p->head = 0;
-  //todo remove >
-
   // Set up mem swap table if not exist.
   // Otherwise clear it.
-  //todo do something here.
-  if (p->memstab == 0)
+  if (p->memstab_head == 0)
   {
-    if((p->memstab = memstab_alloc()) == 0)
+    if ((p->memstab_head = memstab_alloc()) == 0)
       return 0;
   }
   else
-  {
     memstab_clear(p);
-  }
+
+  // Set up data for page swapping.
+  p->num_mem_entries = 0;
+  p->memqueue_head = 0;
 
   return p;
 }
@@ -412,8 +479,7 @@ fork(void)
   *np->tf = *curproc->tf;
 
   // Copy data for swapping.
-  np->num_mem_pages = curproc->num_mem_pages;
-  np->num_swap_pages = curproc->num_swap_pages;
+  np->num_mem_entries = curproc->num_mem_entries;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -433,33 +499,31 @@ fork(void)
   int nread = 0;
 
   if (kstrcmp(curproc->name, "init") != 0 && kstrcmp(curproc->name, "sh") != 0)
-    while ((nread = swapread(curproc, buf, offset, PGSIZE / 2)) != 0)
+  {
+    // Copy high swap file.
+    offset = 0;
+    nread = 0;
+    while ((nread = swapread_high(curproc, buf, offset, PGSIZE / 2)) != 0)
     {
-      if (swapwrite(np, buf, offset, nread) == -1)
-        panic("[ERROR] Copying swapfile in fork().");
+      if (swapwrite_high(np, buf, offset, nread) == -1)
+        panic("[ERROR] Copying high swapfile in fork().");
       offset += nread;
     }
 
-  // Copy data for swapping.
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-  {
-    np->mem_pages[i].va = curproc->mem_pages[i].va;
-    np->mem_pages[i].age = curproc->mem_pages[i].age;
-    np->swap_pages[i].va = curproc->swap_pages[i].va;
-  }
-
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-    for (j = 0; j < MAX_PHYS_PAGES; j++)
+    // Copy low swap file.
+    offset = 0;
+    nread = 0;
+    while ((nread = swapread_low(curproc, buf, offset, PGSIZE / 2)) != 0)
     {
-      if ((curproc->mem_pages[i].next != 0) && np->mem_pages[j].va == curproc->mem_pages[i].next->va)
-        np->mem_pages[i].next = &np->mem_pages[j];
+      if (swapwrite_low(np, buf, offset, nread) == -1)
+        panic("[ERROR] Copying low swapfile in fork().");
+      offset += nread;
     }
-
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-  {
-    if (curproc->head->va == np->mem_pages[i].va)
-      np->head = &np->mem_pages[i];
   }
+
+  // Copy data for swapping.
+  if (copy_stab(np, curproc) == -1)
+    return -1;
 
   acquire(&ptable.lock);
 

@@ -44,6 +44,10 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 // which is 16.6MB. All swap tables take 6.25MB.
 // Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
 #define NUM_MEMSTAB_PAGES 25
+
+#define NUM_MEMSTAB_ENTRIES_CAPACITY 4250
+
+
 struct memstab_page_entry
 {
   char *vaddr;
@@ -100,13 +104,16 @@ struct proc {
   uint stack_size;             // Process stack size.
   int stack_grow;              // Is the stack growing.
 
-  int num_mem_pages;
+  int num_mem_entries;         // How many entries are saved in memstab. 
+  int num_high_swapstab_pages; // How many pages does swapstab_high have.
+  int num_low_swapstab_pages;  // How many pages does swapstab_low have.
 
   struct file *swapfile_high; // Swap file for high memory - stack.
   struct file *swapfile_low;  // Swap file for low memory - heap, data and text.
 
   struct memstab_page *memstab_head;
   struct memstab_page *memstab_tail;
+  struct memstab_page_entry *memqueue_head;
 
   struct swapstab_page *swapstab_high_head;
   struct swapstab_page *swapstab_high_tail;

@@ -250,7 +250,7 @@ void record_page(char *va)
 {
   struct proc *curproc = myproc();
   fifo_record(va, curproc);
-  curproc->num_mem_pages++;
+  curproc->num_mem_entries++;
 }
 
 struct mem_page *fifo_write()
@@ -343,7 +343,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   for(; a < newsz; a += PGSIZE){
 
     // Check if we have enough space to put the page in memory.
-    if (curproc->num_mem_pages >= MAX_PHYS_PAGES)
+    if (curproc->num_mem_entries >= MAX_PHYS_PAGES)
     {
       // Swap out page at oldsz.
       //! At least in fifo, the arg passed to write_page is unimportant.
@@ -426,7 +426,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
           l->next = curproc->mem_pages[i].next;
         }
         curproc->mem_pages[i].next = 0;
-        curproc->num_mem_pages--;
+        curproc->num_mem_entries--;
       }
 
       char *v = P2V(pa);
@@ -826,7 +826,7 @@ void swappage(uint addr)
   //? Why should we do this?
   if (kstrcmp(curproc->name, "init") == 0 || kstrcmp(curproc->name, "sh") == 0)
   {
-    curproc->num_mem_pages++;
+    curproc->num_mem_entries++;
     return;
   }
 

@@ -54,8 +54,10 @@ void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, char*, uint, uint);
 int             swapalloc(struct proc *p);
 int             swapdealloc(struct proc *p);
-int             swapread(struct proc *p, char *buf, uint offset, uint size);
-int             swapwrite(struct proc *p, char *buf, uint offset, uint size);
+int             swapread_high(struct proc *p, char *buf, uint offset, uint size);
+int             swapwrite_high(struct proc *p, char *buf, uint offset, uint size);
+int             swapread_low(struct proc *p, char *buf, uint offset, uint size);
+int             swapwrite_low(struct proc *p, char *buf, uint offset, uint size);
 
 // ide.c
 void            ideinit(void);
