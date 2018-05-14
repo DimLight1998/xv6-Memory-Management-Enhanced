@@ -674,24 +674,45 @@ nameiparent(char *path, char *name)
 int swapalloc(struct proc *p)
 {
   char path[20];
-  memmove(path, "./swap", 6);
-  itoa(p->pid, path + 6);
+  struct inode* in;
+
+  // Allocate swap file for low memory.
+  memmove(path, "./.swaplo", 9);
+  itoa(p->pid, path + 9);
 
   begin_op();
-  struct inode *in = create(path, T_FILE, 0, 0);
+  in = create(path, T_FILE, 0, 0);
   iunlock(in);
 
-  p->swapfile = filealloc();
-  if (p->swapfile == 0)
+  p->swapfile_low= filealloc();
+  if (p->swapfile_low == 0)
     panic("[ERROR] No swapfile.\n");
 
-  p->swapfile->ip = in;
-  p->swapfile->type = FD_INODE;
-  p->swapfile->off = 0;
-  p->swapfile->readable = O_WRONLY;
-  p->swapfile->writable = O_RDWR;
+  p->swapfile_low->ip = in;
+  p->swapfile_low->type = FD_INODE;
+  p->swapfile_low->off = 0;
+  p->swapfile_low->readable = O_WRONLY;
+  p->swapfile_low->writable = O_RDWR;
 
   end_op();
+
+  // Allocate swap file for high memory.
+  memmove(path, "./.swaphi", 9);
+  itoa(p->pid, path + 9);
+
+  begin_op();
+  in = create(path, T_FILE, 0, 0);
+  iunlock(in);
+
+  p->swapfile_high = filealloc();
+  if (p->swapfile_high == 0)
+    panic("[ERROR] No swapfile.\n");
+
+  p->swapfile_high->ip = in;
+  p->swapfile_high->type = FD_INODE;
+  p->swapfile_high->off = 0;
+  p->swapfile_high->readable = O_WRONLY;
+  p->swapfile_high->writable = O_RDWR;
 
   return 0;
 }
@@ -699,24 +720,56 @@ int swapalloc(struct proc *p)
 int swapdealloc(struct proc *p)
 {
   char path[20];
-  memmove(path, "./swap", 6);
-  itoa(p->pid, path + 6);
 
-  if (0 == p->swapfile)
+  // Close swapfile for low memory.
+  memmove(path, "./.swaplo", 9);
+  itoa(p->pid, path + 9);
+
+  if (0 == p->swapfile_low)
     return -1;
-  fileclose(p->swapfile);
+  fileclose(p->swapfile_low);
+
+  return kunlink(path);
+
+  // Close swapfile for high memory.
+  memmove(path, "./.swaphi", 9);
+  itoa(p->pid, path + 9);
+
+  if (0 == p->swapfile_high)
+    return -1;
+  fileclose(p->swapfile_high);
 
   return kunlink(path);
 }
 
-int swapread(struct proc *p, char *buf, uint offset, uint size)
+static int swapread(struct file* swapfile, char*buf, uint offset, uint size)
 {
-  p->swapfile->off = offset;
-  return fileread(p->swapfile, buf, size);
+  swapfile->off = offset;
+  return fileread(swapfile, buf, size);
 }
 
-int swapwrite(struct proc *p, char *buf, uint offset, uint size)
+static int swapwrite(struct file* swapfile, char*buf, uint offset, uint size)
 {
-  p->swapfile->off = offset;
-  return filewrite(p->swapfile, buf, size);
+  swapfile->off = offset;
+  return filewrite(swapfile, buf, size);
+}
+
+int swapread_high(struct proc *p, char *buf, uint offset, uint size)
+{
+  return swapread(p->swapfile_high, buf, offset, size);
+}
+
+int swapwrite_high(struct proc *p, char *buf, uint offset, uint size)
+{
+  return swapwrite(p->swapfile_high, buf, offset, size);
+}
+
+int swapread_low(struct proc *p, char *buf, uint offset, uint size)
+{
+  return swapread(p->swapfile_low, buf, offset, size);
+}
+
+int swapwrite_low(struct proc *p, char *buf, uint offset, uint size)
+{
+  return swapwrite(p->swapfile_low, buf, offset, size);
 }
