@@ -45,6 +45,7 @@ void swaptableinit(void)
     thisproc->swapstab_low_tail = 0;
     thisproc->swapfile_high = 0;
     thisproc->swapfile_low = 0;
+    thisproc->memqueue_head = 0;
   }
   release(&ptable.lock);
 }

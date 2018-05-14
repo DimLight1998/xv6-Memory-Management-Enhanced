@@ -45,6 +45,7 @@ exec(char *path, char **argv)
   memstab_clear(curproc);
   swapstab_clear(curproc);
   curproc->num_mem_entries = 0;
+  curproc->memqueue_head = 0;
   
   //todo Need a mechanism to save the swap table and restore it if exec fails.
   
