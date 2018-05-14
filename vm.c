@@ -290,7 +290,7 @@ void fifo_record(char *va, struct proc *curproc)
   panic("[ERROR] No free slot in memory.");
 }
 
-// Add a new page to mem_pages.
+// Add a new page to memstab.
 void record_page(char *va)
 {
   struct proc *curproc = myproc();
@@ -373,7 +373,7 @@ SUCCESS:
   return last;
 }
 
-// Swap out a page from mem_pages to swap_pages.
+// Swap out a page from memstab to swapstab.
 struct memstab_page_entry *write_page(char *va)
 {
   return fifo_write();
@@ -483,7 +483,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if (pa == 0)
         panic("kfree");
 
-      // If the page is in mem_pages, clear it.
+      // If the page is in memstab, clear it.
       if (curproc->pgdir == pgdir)
       {
         struct memstab_page *curpg = curproc->memstab_head;
@@ -843,9 +843,9 @@ void fifo_swap(uint addr)
   pte_t *pte_in, *pte_out;
   struct proc *curproc = myproc();
 
-  // Find the last record in mem_pages.
-  struct mem_page *link = curproc->head;
-  struct mem_page *last;
+  // Find the last record in memstab.
+  struct memstab_page_entry *link = curproc->memqueue_head;
+  struct memstab_page_entry *last;
   if (link == 0 || link->next == 0)
     panic("[ERROR] Only 0 or 1 pages in memory.");
   while (link->next->next != 0)
@@ -854,19 +854,57 @@ void fifo_swap(uint addr)
   link->next = 0;
 
   // Locate the PTE of the page to be swapped out.
-  pte_in = walkpgdir(curproc->pgdir, (void *)last->va, 0);
+  pte_in = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
   if (!*pte_in)
-    panic("[ERROR] A record is in mem_pages but not in pgdir.");
+    panic("[ERROR] A record is in memstab but not in pgdir.");
+
+  struct swap_offset_desc desc = get_swap_offset(curproc, last->vaddr);
+  struct swapstab_page *curpg = 0;
+  struct swapstab_page_entry *ent = 0;
+  int (*read_func)(struct proc *, char *, uint, uint) = 0;
+  int (*write_func)(struct proc *, char *, uint, uint) = 0;
+  uint offset = 0;
+
+  if (desc.is_high)
+  {
+    curpg = curproc->swapstab_high_head;
+    read_func = &swapread_high;
+    write_func = &swapwrite_high;
+  }
+  else
+  {
+    curpg = curproc->swapstab_low_head;
+    read_func = &swapread_low;
+    write_func = &swapwrite_low;
+  }
 
   // Find the record of the page to be swapped in in swap_pages.
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-    if (curproc->swap_pages[i].va == (char *)PTE_ADDR(addr))
-      goto SLOT_FOUND;
-  panic("[ERROR] Should found a record in swapfile!");
+  while (curpg != 0)
+  {
+    for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
+      if (curpg->entries[i].vaddr == (char *)PTEADDR(addr))
+      {
+        ent = &(curpg->entries[i]);
+        offset += i * PGSIZE;
+        break;
+      }
+
+    if (ent == 0)
+      break;
+    else
+    {
+      curpg = curpg->next;
+      offset += SWAPSTAB_PAGE_OFFSET;
+    }
+  }
+
+  if (ent == 0)
+    panic("[ERROR] Should found a record in swapfile!");
 
   // Perform swap.
 SLOT_FOUND:
-  curproc->swap_pages[i].va = last->va;
+  ent->vaddr = last->vaddr;
+
   pte_out = walkpgdir(curproc->pgdir, (void *)addr, 0);
   if (!*pte_out)
     panic("[ERROR] A record should be in pgdir!");
@@ -875,18 +913,18 @@ SLOT_FOUND:
   // Real swap - read from swapfile and write to swap file.
   for (j = 0; j < 4; j++)
   {
-    int loc = (i * PGSIZE) + (SWAP_BUF_SIZE * j);
-    int offset = SWAP_BUF_SIZE * j;
+    uint loc = offset + (SWAP_BUF_SIZE * j);
+    int off = SWAP_BUF_SIZE * j;
     memset(buf, 0, SWAP_BUF_SIZE);
-    swapread(curproc, buf, loc, SWAP_BUF_SIZE);
-    swapwrite(curproc, (char *)(P2V_WO(PTE_ADDR(*pte_in)) + offset), loc, SWAP_BUF_SIZE);
-    memmove((void *)(PTE_ADDR(addr) + offset), (void *)buf, SWAP_BUF_SIZE);
+    read_func(curproc, buf, loc, SWAP_BUF_SIZE);
+    write_func(curproc, (char *)(P2V_WO(PTE_ADDR(*pte_in)) + off), loc, SWAP_BUF_SIZE);
+    memmove((void *)(PTE_ADDR(addr) + off), (void *)buf, SWAP_BUF_SIZE);
   }
 
   *pte_in = PTE_U | PTE_W | PTE_PG;
-  last->next = curproc->head;
-  curproc->head = last;
-  last->va = (char *)PTE_ADDR(addr);
+  last->next = curproc->memqueue_head;
+  curproc->memqueue_head = last;
+  last->vaddr = (char *)PTE_ADDR(addr);
 }
 
 void swappage(uint addr)
