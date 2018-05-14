@@ -230,17 +230,62 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
+// Return whether the address is in high part of the memory space.
+// True if the address is in stack.
+// False if it's in heap/text/data.
+int is_high_memory(struct proc *p, uint vaddr)
+{
+  vaddr = PGROUNDDOWN(vaddr);
+  if ((vaddr >= p->sz && vaddr < USERTOP - p->stack_size) || vaddr >= USERTOP)
+    panic("[ERROR] High memory check: invalid virt addr.");
+  if (vaddr < p->sz)
+    return 0;
+  if (vaddr >= USERTOP - p->stack_size)
+    return 1;
+  panic("[ERROR] High memory check: invalid virt addr. (2)");
+}
+
+// Get the offset descriptor to be used in memory swapping.
+// `vaddr` will be aligned inside the function.
+static struct swap_offset_desc
+get_swap_offset(struct proc *p, uint vaddr)
+{
+  vaddr = PGROUNDDOWN(vaddr);
+  int is_high = is_high_memory(p, vaddr);
+  struct swap_offset_desc ret;
+  if (is_high)
+  {
+    ret.is_high = 1;
+    ret.offset = USERTOP - PGSIZE - vaddr;
+  }
+  else
+  {
+    ret.is_high = 0;
+    ret.offset = vaddr;
+  }
+
+  return ret;
+}
+
+// Find a usable slot and record it using linear search.
 void fifo_record(char *va, struct proc *curproc)
 {
-  int i;
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-    if (curproc->mem_pages[i].va == SLOT_USABLE)
+  int curpos = 0;
+  struct memstab_page *curpg = curproc->memstab_head;
+
+  while (curpg != 0)
+  {
+    for (curpos = 0; curpos < NUM_MEMSTAB_PAGE_ENTRIES; curpos++)
     {
-      curproc->mem_pages[i].va = va;
-      curproc->mem_pages[i].next = curproc->head;
-      curproc->head = &curproc->mem_pages[i];
-      return;
+      if (curpg->entries[curpos].vaddr == SLOT_USABLE)
+      {
+        curpg->entries[curpos].vaddr = va;
+        curpg->entries[curpos].next = curproc->memqueue_head;
+        curproc->memqueue_head = &(curpg->entries[curpos]);
+        return;
+      }
     }
+  }
 
   panic("[ERROR] No free slot in memory.");
 }
@@ -253,48 +298,79 @@ void record_page(char *va)
   curproc->num_mem_entries++;
 }
 
-struct mem_page *fifo_write()
+struct memstab_page_entry *fifo_write()
 {
   int i;
-  struct mem_page *link, *last;
+  struct memstab_page_entry *link, *last;
   struct proc *curproc = myproc();
 
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-    if (curproc->swap_pages[i].va == SLOT_USABLE)
+  link = curproc->memqueue_head;
+  if (link == 0 || link->next)
+    panic("Only 0 or 1 page in memory.");
+  while (link->next->next != 0)
+    link = link->next;
+  last = link;
+  link->next = 0;
+
+  struct swap_offset_desc desc = get_swap_offset(curproc, last->vaddr);
+  struct swapstab_page *curpage;
+  int i = 0, pg = 0;
+
+  int (*write_func)(struct proc *, char *, uint, uint) = 0;
+  int (*grow_func)(struct proc *) = 0;
+
+  if (desc.is_high)
+  {
+    write_func = &swapwrite_high;
+    grow_func = &swapstab_growpage_high;
+  }
+  else
+  {
+    write_func = &swapwrite_low;
+    grow_func = &swapstab_growpage_low;
+  }
+
+  curpage = desc.is_high ? curproc->swapstab_high_head : curproc->swapstab_low_head;
+  while (curpage != 0)
+  {
+    for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
+      if (curpage->entries[i].vaddr == SLOT_USABLE)
+      {
+        curpage->entries[i].vaddr = last->vaddr;
+        if (write_func(curproc, (char *)PTE_ADDR(last->vaddr), (pg * SWAPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
+          return 0;
+        goto SUCCESS;
+      }
+    curpage = curpage->next;
+    pg++;
+  }
+
+  grow_func(curproc);
+  curpage = desc.is_high ? curproc->swapstab_high_tail : curproc->swapstab_low_tail;
+
+  for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
+    if (curpage->entries[i].vaddr == SLOT_USABLE)
     {
-      // Find the last record in mem_pages,
-      // then swap it out.
-      link = curproc->head;
-      if (link == 0 || link->next == 0)
-        panic("Only 0 or 1 page in memory.");
-      while (link->next->next != 0)
-        link = link->next;
-      last = link->next;
-      link->next = 0;
-
-      // Swap the page out, write it to swapfile.
-      // The record in swapfile and swap_pages is in the same order.
-      curproc->swap_pages[i].va = last->va;
-      if (swapwrite(curproc, (char *)PTE_ADDR(last->va), i * PGSIZE, PGSIZE) == 0)
+      curpage->entries[i].vaddr = last->vaddr;
+      if (write_func(curproc, (char *)PTE_ADDR(last->vaddr), (pg * SWAPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
         return 0;
-
-      // Free the page pointed by last - it has been swapped out and can be reused.
-      pte_t *pte = walkpgdir(curproc->pgdir, (void *)last->va, 0);
-      if (!(*pte))
-        panic("[ERROR] [fifo_write] PTE empty.");
-      kfree((char *)(P2V_WO(PTE_ADDR(*pte))));
-      *pte = PTE_W | PTE_U | PTE_PG;
-
-      curproc->num_swap_pages++;
-
-      // Refresh page dir.
-      lcr3(V2P(curproc->pgdir));
-
-      // Return the freed slot.
-      return last;
+      goto SUCCESS;
     }
 
-  panic("[ERROR] No free slot in storage.");
+  panic("[ERROR] SLOT OUT.");
+
+SUCCESS:
+  // Free the page pointed by last - it has been swapped out and can be reused.
+  pte_t *pte = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
+  if (!(*pte))
+    panic("[ERROR] [fifo_write] PTE empty.");
+  kfree((char *)(P2V_WO(PTE_ADDR(*pte))));
+  *pte = PTE_W | PTE_U | PTE_PG;
+  // Refresh page dir.
+  lcr3(V2P(curproc->pgdir));
+
+  // Return the freed slot.
+  return last;
 }
 
 // Swap out a page from mem_pages to swap_pages.
@@ -780,43 +856,6 @@ SLOT_FOUND:
   last->next = curproc->head;
   curproc->head = last;
   last->va = (char *)PTE_ADDR(addr);
-}
-
-// Return whether the address is in high part of the memory space.
-// True if the address is in stack.
-// False if it's in heap/text/data.
-int is_high_memory(struct proc *p, uint vaddr)
-{
-  vaddr = PGROUNDDOWN(vaddr);
-  if ((vaddr >= p->sz && vaddr < USERTOP - p->stack_size) || vaddr >= USERTOP)
-    panic("[ERROR] High memory check: invalid virt addr.");
-  if (vaddr < p->sz)
-    return 0;
-  if (vaddr >= USERTOP - p->stack_size)
-    return 1;
-  panic("[ERROR] High memory check: invalid virt addr. (2)");
-}
-
-// Get the offset descriptor to be used in memory swapping.
-// `vaddr` will be aligned inside the function.
-static struct swap_offset_desc
-get_swap_offset(struct proc *p, uint vaddr)
-{
-  vaddr = PGROUNDDOWN(vaddr);
-  int is_high = is_high_memory(p, vaddr);
-  struct swap_offset_desc ret;
-  if (is_high)
-  {
-    ret.is_high = 1;
-    ret.offset = USERTOP - PGSIZE - vaddr;
-  }
-  else
-  {
-    ret.is_high = 0;
-    ret.offset = vaddr;
-  }
-
-  return ret;
 }
 
 void swappage(uint addr)

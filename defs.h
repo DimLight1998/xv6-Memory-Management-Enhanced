@@ -131,6 +131,8 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 void            swaptableinit(void);
+int             swapstab_growpage_high(struct proc *pr);
+int             swapstab_growpage_low(struct proc *pr);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

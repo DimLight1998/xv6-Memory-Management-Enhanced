@@ -41,38 +41,7 @@ exec(char *path, char **argv)
   // Save data for swapping, restore them later.
   // Normalily we can just clear them, but if exec failed,
   // we need to be able to restore.
-  
-
-
-
-  //todo modify <
-  // int num_mem_entries = curproc->num_mem_entries;
-  // int num_swap_pages = curproc->num_swap_pages;
-  // struct mem_page mem_pages[MAX_PHYS_PAGES];
-  // struct swap_page swap_pages[MAX_PHYS_PAGES];
-
-  // for (i = 0; i < MAX_PHYS_PAGES; i++)
-  // {
-  //   mem_pages[i].va = curproc->mem_pages[i].va;
-  //   mem_pages[i].age = curproc->mem_pages[i].age;
-  //   mem_pages[i].next = curproc->mem_pages[i].next;
-
-  //   swap_pages[i].va = curproc->swap_pages[i].va;
-
-  //   curproc->mem_pages[i].va = SLOT_USABLE;
-  //   curproc->mem_pages[i].age = 0;
-  //   curproc->mem_pages[i].next = 0;
-  //   curproc->swap_pages[i].va = SLOT_USABLE;
-  // }
-
-  // struct mem_page* head = curproc->head;
-  // curproc->num_mem_entries = 0;
-  // curproc->num_swap_pages = 0;
-  // curproc->head = 0;
-  //todo modify >
-
-  //todo Dirty work. Do it later.
-
+  //todo Need a mechanism to save the swap table and restore it if exec fails.
 
   // Load program into memory.
   sz = PGSIZE;
@@ -156,19 +125,10 @@ exec(char *path, char **argv)
     end_op();
   }
 
-  // Restore data for swapping
-  curproc->num_mem_entries = num_mem_entries;
-  curproc->num_swap_pages = num_swap_pages;
-  curproc->head = head;
-
-  for (i = 0; i < MAX_PHYS_PAGES; i++)
-  {
-    curproc->mem_pages[i].va = mem_pages[i].va;
-    curproc->mem_pages[i].age = mem_pages[i].age;
-    curproc->mem_pages[i].next = mem_pages[i].next;
-
-    curproc->swap_pages[i].va = swap_pages[i].va;
-  }
+  // Save data for swapping, restore them later.
+  // Normalily we can just clear them, but if exec failed,
+  // we need to be able to restore.
+  //todo Need a mechanism to save the swap table and restore it if exec fails.
 
   return -1;
 }

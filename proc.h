@@ -40,6 +40,8 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 // Every page in swapstab can contain ~1M infomation about swapped out memory.
 #define NUM_SWAPSTAB_PAGE_ENTRIES 510
 
+#define SWAPSTAB_PAGE_OFFSET (NUM_SWAPSTAB_PAGE_ENTRIES * PGSIZE)
+
 // A swap table has 25 table pages, so the number of in-memory pages is limited to 4250,
 // which is 16.6MB. All swap tables take 6.25MB.
 // Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
