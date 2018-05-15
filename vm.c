@@ -285,6 +285,8 @@ void fifo_record(char *va, struct proc *curproc)
         return;
       }
     }
+
+    curpg = curpg->next;
   }
 
   panic("[ERROR] No free slot in memory.");
@@ -304,11 +306,11 @@ struct memstab_page_entry *fifo_write()
   struct proc *curproc = myproc();
 
   link = curproc->memqueue_head;
-  if (link == 0 || link->next)
+  if (link == 0 || link->next == 0)
     panic("Only 0 or 1 page in memory.");
   while (link->next->next != 0)
     link = link->next;
-  last = link;
+  last = link->next;
   link->next = 0;
 
   struct swap_offset_desc desc = get_swap_offset(curproc, (uint)(last->vaddr));
@@ -900,7 +902,7 @@ void fifo_swap(uint addr)
   }
 
   if (ent == 0)
-    panic("[ERROR] Should found a record in swapfile!");
+    panic("[ERROR] Should find a record in swapfile!");
 
   // Perform swap.
   ent->vaddr = last->vaddr;

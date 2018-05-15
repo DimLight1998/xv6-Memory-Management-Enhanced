@@ -161,34 +161,34 @@ void swapstab_clear(struct proc *pr)
 
 static int swapstab_growpage(struct proc *pr, uint high)
 {
-  struct swapstab_page *head, *tail;
+  struct swapstab_page **head, **tail;
   if (high)
   {
-    head = pr->swapstab_high_head;
-    tail = pr->swapstab_high_tail;
+    head = &(pr->swapstab_high_head);
+    tail = &(pr->swapstab_high_tail);
   }
   else
   {
-    head = pr->swapstab_low_head;
-    tail = pr->swapstab_low_tail;
+    head = &(pr->swapstab_low_head);
+    tail = &(pr->swapstab_low_tail);
   }
 
   // Start growing.
-  if(head == 0)
+  if (*head == 0)
   {
     // This process has no swapped swap page.
-    if((head = swapstab_page_alloc()) == 0)
+    if ((*head = swapstab_page_alloc()) == 0)
       return -1;
-    tail = head;
+    *tail = *head;
   }
   else
   {
     // This process has some swapped swap page.
-    struct swapstab_page* temp = tail;
-    if ((tail = swapstab_page_alloc()) == 0)
+    struct swapstab_page *temp = *tail;
+    if ((*tail = swapstab_page_alloc()) == 0)
       return -1;
-    temp->next = tail;
-    tail->prev = temp;
+    temp->next = *tail;
+    (*tail)->prev = temp;
   }
 
   return 0;
