@@ -39,15 +39,11 @@ void swaptableinit(void)
     thisproc->num_mem_entries = 0;
     thisproc->memstab_head = 0;
     thisproc->memstab_tail = 0;
-    thisproc->swapstab_high_head = 0;
-    thisproc->swapstab_high_tail = 0;
-    thisproc->swapstab_low_head = 0;
-    thisproc->swapstab_low_tail = 0;
-    thisproc->swapfile_high = 0;
-    thisproc->swapfile_low = 0;
+    thisproc->swapstab_head = 0;
+    thisproc->swapstab_tail= 0;
+    thisproc->swapfile = 0;
     thisproc->memqueue_head = 0;
-    thisproc->num_high_swapstab_pages = 0;
-    thisproc->num_low_swapstab_pages = 0;
+    thisproc->num_swapstab_pages = 0;
   }
   release(&ptable.lock);
 }
@@ -144,14 +140,7 @@ void swapstab_clear(struct proc *pr)
 {
   struct swapstab_page *p;
 
-  p = pr->swapstab_high_head;
-  while (p != 0)
-  {
-    swapstab_page_clear(p, 0);
-    p = p->next;
-  }
-
-  p = pr->swapstab_low_head;
+  p = pr->swapstab_head;
   while (p != 0)
   {
     swapstab_page_clear(p, 0);
@@ -159,20 +148,12 @@ void swapstab_clear(struct proc *pr)
   }
 }
 
-static int swapstab_growpage(struct proc *pr, uint high)
+int swapstab_growpage(struct proc *pr)
 {
   struct swapstab_page **head, **tail;
-  if (high)
-  {
-    head = &(pr->swapstab_high_head);
-    tail = &(pr->swapstab_high_tail);
-  }
-  else
-  {
-    head = &(pr->swapstab_low_head);
-    tail = &(pr->swapstab_low_tail);
-  }
-
+  head = &(pr->swapstab_head);
+  tail = &(pr->swapstab_tail);
+  
   // Start growing.
   if (*head == 0)
   {
@@ -194,27 +175,7 @@ static int swapstab_growpage(struct proc *pr, uint high)
   return 0;
 }
 
-// Grow high memory swapped swap table by one page.
-// Returns 0 on success, otherwise -1.
-int swapstab_growpage_high(struct proc *pr)
-{
-  int res = swapstab_growpage(pr, 1);
-  if (res == 0)
-    pr->num_high_swapstab_pages++;
-  return res;
-}
-
-// Grow low memory swapped swap table by one page.
-// Returns 0 on success, otherwise -1.
-int swapstab_growpage_low(struct proc *pr)
-{
-  int res = swapstab_growpage(pr, 0);
-  if (res == 0)
-    pr->num_low_swapstab_pages++;
-  return res;
-}
-
-// Copy swap table (mem, low swapped, high swapped) from srcproc to dstproc.
+// Copy swap table (mem, swapped) from srcproc to dstproc.
 // Don't preserve relative location in memory swap table.
 // Returns 0 on success, otherwise -1.
 int copy_stab(struct proc *dstproc, struct proc *srcproc)
@@ -250,40 +211,16 @@ int copy_stab(struct proc *dstproc, struct proc *srcproc)
   }
 
   // Copy swapped swap table.
-  int diff;
   int i;
   struct swapstab_page *srccurpg, *dstcurpg;
-
-  // Copy high swapped swap table.
-  diff = srcproc->num_high_swapstab_pages - dstproc->num_high_swapstab_pages;
-  while (diff > 0)
+  while (srcproc->num_swapstab_pages > dstproc->num_swapstab_pages)
   {
-    if (swapstab_growpage_high(dstproc) == 0)
+    if (swapstab_growpage(dstproc) == 0)
       return -1;
-    diff--;
   }
 
-  srccurpg = srcproc->swapstab_high_head;
-  dstcurpg = dstproc->swapstab_high_head;
-  while (srccurpg != 0)
-  {
-    for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
-      dstcurpg->entries[i] = srccurpg->entries[i];
-    dstcurpg = dstcurpg->next;
-    srccurpg = srccurpg->next;
-  }
-
-  // Copy low swapped swap table.
-  diff = srcproc->num_low_swapstab_pages - dstproc->num_low_swapstab_pages;
-  while (diff > 0)
-  {
-    if (swapstab_growpage_low(dstproc) == 0)
-      return -1;
-    diff--;
-  }
-
-  srccurpg = srcproc->swapstab_low_head;
-  dstcurpg = dstproc->swapstab_low_head;
+  srccurpg = srcproc->swapstab_head;
+  dstcurpg = dstproc->swapstab_head;
   while (srccurpg != 0)
   {
     for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
@@ -510,23 +447,13 @@ fork(void)
 
   if (kstrcmp(curproc->name, "init") != 0 && kstrcmp(curproc->name, "sh") != 0)
   {
-    // Copy high swap file.
+    // Copy swap file.
     offset = 0;
     nread = 0;
-    while ((nread = swapread_high(curproc, buf, offset, PGSIZE / 2)) != 0)
+    while ((nread = swapread(curproc, buf, offset, PGSIZE / 2)) != 0)
     {
-      if (swapwrite_high(np, buf, offset, nread) == -1)
-        panic("[ERROR] Copying high swapfile in fork().");
-      offset += nread;
-    }
-
-    // Copy low swap file.
-    offset = 0;
-    nread = 0;
-    while ((nread = swapread_low(curproc, buf, offset, PGSIZE / 2)) != 0)
-    {
-      if (swapwrite_low(np, buf, offset, nread) == -1)
-        panic("[ERROR] Copying low swapfile in fork().");
+      if (swapwrite(np, buf, offset, nread) == -1)
+        panic("[ERROR] Copying swapfile in fork().");
       offset += nread;
     }
   }

@@ -107,18 +107,14 @@ struct proc {
   int stack_grow;              // Is the stack growing.
 
   int num_mem_entries;         // How many entries are saved in memstab. 
-  int num_high_swapstab_pages; // How many pages does swapstab_high have.
-  int num_low_swapstab_pages;  // How many pages does swapstab_low have.
+  int num_swapstab_pages;      // How many pages does swapstab_low have.
 
-  struct file *swapfile_high; // Swap file for high memory - stack.
-  struct file *swapfile_low;  // Swap file for low memory - heap, data and text.
+  struct file *swapfile; // Swap file for memory.
 
   struct memstab_page *memstab_head;
   struct memstab_page *memstab_tail;
   struct memstab_page_entry *memqueue_head;
 
-  struct swapstab_page *swapstab_high_head;
-  struct swapstab_page *swapstab_high_tail;
-  struct swapstab_page *swapstab_low_head;
-  struct swapstab_page *swapstab_low_tail;
+  struct swapstab_page *swapstab_head;
+  struct swapstab_page *swapstab_tail;
 };

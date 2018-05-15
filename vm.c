@@ -11,16 +11,6 @@
 
 #define SWAP_BUF_SIZE (PGSIZE / 4)    // Buffer size when swap.
 
-struct swap_offset_desc
-{
-  // If is_high is true, the addr is in stack.
-  // Otherwise it's in heap/data/text.
-  int is_high;
-
-  // Offset used in swapping.
-  uint offset;
-};
-
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
@@ -230,43 +220,6 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
-// Return whether the address is in high part of the memory space.
-// True if the address is in stack.
-// False if it's in heap/text/data.
-int is_high_memory(struct proc *p, uint vaddr)
-{
-  vaddr = PGROUNDDOWN(vaddr);
-  if ((vaddr >= p->sz && vaddr < USERTOP - p->stack_size) || vaddr >= USERTOP)
-    panic("[ERROR] High memory check: invalid virt addr.");
-  if (vaddr < p->sz)
-    return 0;
-  if (vaddr >= USERTOP - p->stack_size)
-    return 1;
-  panic("[ERROR] High memory check: invalid virt addr. (2)");
-}
-
-// Get the offset descriptor to be used in memory swapping.
-// `vaddr` will be aligned inside the function.
-static struct swap_offset_desc
-get_swap_offset(struct proc *p, uint vaddr)
-{
-  vaddr = PGROUNDDOWN(vaddr);
-  int is_high = is_high_memory(p, vaddr);
-  struct swap_offset_desc ret;
-  if (is_high)
-  {
-    ret.is_high = 1;
-    ret.offset = USERTOP - PGSIZE - vaddr;
-  }
-  else
-  {
-    ret.is_high = 0;
-    ret.offset = vaddr;
-  }
-
-  return ret;
-}
-
 // Find a usable slot and record it using linear search.
 void fifo_record(char *va, struct proc *curproc)
 {
@@ -313,25 +266,14 @@ struct memstab_page_entry *fifo_write()
   last = link->next;
   link->next = 0;
 
-  struct swap_offset_desc desc = get_swap_offset(curproc, (uint)(last->vaddr));
   struct swapstab_page *curpage;
   int i = 0, pg = 0;
 
   int (*write_func)(struct proc *, char *, uint, uint) = 0;
   int (*grow_func)(struct proc *) = 0;
 
-  if (desc.is_high)
-  {
-    write_func = &swapwrite_high;
-    grow_func = &swapstab_growpage_high;
-  }
-  else
-  {
-    write_func = &swapwrite_low;
-    grow_func = &swapstab_growpage_low;
-  }
+  curpage = curproc->swapstab_head;
 
-  curpage = desc.is_high ? curproc->swapstab_high_head : curproc->swapstab_low_head;
   while (curpage != 0)
   {
     for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
@@ -347,7 +289,7 @@ struct memstab_page_entry *fifo_write()
   }
 
   grow_func(curproc);
-  curpage = desc.is_high ? curproc->swapstab_high_tail : curproc->swapstab_low_tail;
+  curpage = curproc->swapstab_tail;
 
   for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
     if (curpage->entries[i].vaddr == SLOT_USABLE)
@@ -528,19 +470,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     // Maybe the page is not presented by is in swapfile.
     else if ((*pte & PTE_PG) && curproc->pgdir == pgdir)
     {
-      struct swap_offset_desc desc = get_swap_offset(curproc, a);
       struct swapstab_page* curpg;
       int i;
 
-      if(desc.is_high)
-      {
-        curpg = curproc->swapstab_high_head;
-      }
-      else
-      {
-        curpg = curproc->swapstab_low_head;
-      }
-
+      curpg = curproc->swapstab_head;
       while(curpg!=0)
       {
         for(i = 0;i<NUM_SWAPSTAB_PAGE_ENTRIES;i++)
@@ -861,25 +794,15 @@ void fifo_swap(uint addr)
   if (!*pte_in)
     panic("[ERROR] A record is in memstab but not in pgdir.");
 
-  struct swap_offset_desc desc = get_swap_offset(curproc, (uint)(last->vaddr));
   struct swapstab_page *curpg = 0;
   struct swapstab_page_entry *ent = 0;
   int (*read_func)(struct proc *, char *, uint, uint) = 0;
   int (*write_func)(struct proc *, char *, uint, uint) = 0;
   uint offset = 0;
 
-  if (desc.is_high)
-  {
-    curpg = curproc->swapstab_high_head;
-    read_func = &swapread_high;
-    write_func = &swapwrite_high;
-  }
-  else
-  {
-    curpg = curproc->swapstab_low_head;
-    read_func = &swapread_low;
-    write_func = &swapwrite_low;
-  }
+  curpg = curproc->swapstab_head;
+  read_func = &swapread;
+  write_func = &swapwrite;
 
   // Find the record of the page to be swapped in in swap_pages.
   while (curpg != 0)

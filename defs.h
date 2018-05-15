@@ -54,10 +54,8 @@ void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, char*, uint, uint);
 int             swapalloc(struct proc *p);
 int             swapdealloc(struct proc *p);
-int             swapread_high(struct proc *p, char *buf, uint offset, uint size);
-int             swapwrite_high(struct proc *p, char *buf, uint offset, uint size);
-int             swapread_low(struct proc *p, char *buf, uint offset, uint size);
-int             swapwrite_low(struct proc *p, char *buf, uint offset, uint size);
+int             swapread(struct proc *p, char *buf, uint offset, uint size);
+int             swapwrite(struct proc *p, char *buf, uint offset, uint size);
 
 // ide.c
 void            ideinit(void);
@@ -131,8 +129,7 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 void            swaptableinit(void);
-int             swapstab_growpage_high(struct proc *pr);
-int             swapstab_growpage_low(struct proc *pr);
+int             swapstab_growpage(struct proc *pr);
 void            memstab_clear(struct proc*);
 void            swapstab_clear(struct proc*);
 
