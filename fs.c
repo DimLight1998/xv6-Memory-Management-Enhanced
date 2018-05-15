@@ -718,6 +718,8 @@ int swapalloc(struct proc *p)
   p->swapfile_high->readable = O_WRONLY;
   p->swapfile_high->writable = O_RDWR;
 
+  end_op();
+
   if (SHOW_SWAPALLOC_LEAVE)
     cprintf("Leaving swapalloc.\n");
 

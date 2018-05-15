@@ -46,6 +46,8 @@ void swaptableinit(void)
     thisproc->swapfile_high = 0;
     thisproc->swapfile_low = 0;
     thisproc->memqueue_head = 0;
+    thisproc->num_high_swapstab_pages = 0;
+    thisproc->num_low_swapstab_pages = 0;
   }
   release(&ptable.lock);
 }
