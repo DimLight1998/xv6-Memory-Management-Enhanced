@@ -269,9 +269,6 @@ struct memstab_page_entry *fifo_write()
   struct swapstab_page *curpage;
   int i = 0, pg = 0;
 
-  int (*write_func)(struct proc *, char *, uint, uint) = 0;
-  int (*grow_func)(struct proc *) = 0;
-
   curpage = curproc->swapstab_head;
 
   while (curpage != 0)
@@ -280,7 +277,7 @@ struct memstab_page_entry *fifo_write()
       if (curpage->entries[i].vaddr == SLOT_USABLE)
       {
         curpage->entries[i].vaddr = last->vaddr;
-        if (write_func(curproc, (char *)PTE_ADDR(last->vaddr), (pg * SWAPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
+        if (swapwrite(curproc, (char *)PTE_ADDR(last->vaddr), (pg * SWAPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
           return 0;
         goto SUCCESS;
       }
@@ -288,14 +285,14 @@ struct memstab_page_entry *fifo_write()
     pg++;
   }
 
-  grow_func(curproc);
+  swapstab_growpage(curproc);
   curpage = curproc->swapstab_tail;
 
   for (i = 0; i < NUM_SWAPSTAB_PAGE_ENTRIES; i++)
     if (curpage->entries[i].vaddr == SLOT_USABLE)
     {
       curpage->entries[i].vaddr = last->vaddr;
-      if (write_func(curproc, (char *)PTE_ADDR(last->vaddr), (pg * SWAPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
+      if (swapwrite(curproc, (char *)PTE_ADDR(last->vaddr), (pg * SWAPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
         return 0;
       goto SUCCESS;
     }
@@ -796,13 +793,9 @@ void fifo_swap(uint addr)
 
   struct swapstab_page *curpg = 0;
   struct swapstab_page_entry *ent = 0;
-  int (*read_func)(struct proc *, char *, uint, uint) = 0;
-  int (*write_func)(struct proc *, char *, uint, uint) = 0;
   uint offset = 0;
 
   curpg = curproc->swapstab_head;
-  read_func = &swapread;
-  write_func = &swapwrite;
 
   // Find the record of the page to be swapped in in swap_pages.
   while (curpg != 0)
@@ -815,7 +808,7 @@ void fifo_swap(uint addr)
         break;
       }
 
-    if (ent == 0)
+    if (ent != 0)
       break;
     else
     {
@@ -841,8 +834,8 @@ void fifo_swap(uint addr)
     uint loc = offset + (SWAP_BUF_SIZE * j);
     int off = SWAP_BUF_SIZE * j;
     memset(buf, 0, SWAP_BUF_SIZE);
-    read_func(curproc, buf, loc, SWAP_BUF_SIZE);
-    write_func(curproc, (char *)(P2V_WO(PTE_ADDR(*pte_in)) + off), loc, SWAP_BUF_SIZE);
+    swapread(curproc, buf, loc, SWAP_BUF_SIZE);
+    swapwrite(curproc, (char *)(P2V_WO(PTE_ADDR(*pte_in)) + off), loc, SWAP_BUF_SIZE);
     memmove((void *)(PTE_ADDR(addr) + off), (void *)buf, SWAP_BUF_SIZE);
   }
 

@@ -687,7 +687,7 @@ int swapalloc(struct proc *p)
   in = create(path, T_FILE, 0, 0);
   iunlock(in);
 
-  p->swapfile= filealloc();
+  p->swapfile = filealloc();
   if (p->swapfile == 0)
     panic("[ERROR] No swapfile.\n");
 
