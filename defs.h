@@ -128,6 +128,10 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+void            swaptableinit(void);
+int             swapstab_growpage(struct proc *pr);
+void            memstab_clear(struct proc*);
+void            swapstab_clear(struct proc*);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
