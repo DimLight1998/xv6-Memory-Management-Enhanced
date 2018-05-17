@@ -34,26 +34,20 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// Every memory swap table page has 340 entries to fit into a page. (4088 Bytes in total.)
-#define NUM_MEMSTAB_PAGE_ENTRIES 340
-// Every swapped swap table page has 1022 entries to fit into a page. (4096 Bytes in total.)
-#define NUM_SWAPSTAB_PAGE_ENTRIES 1022
-// Every file swap table page has 1024 entries to fit into a page. (4096 Bytes in total.)
-#define NUM_FILESTAB_PAGE_ENTRIES 1024
+// Every memory swap table page has 170 entries to fit into a page.
+#define NUM_MEMSTAB_PAGE_ENTRIES 170
+// Every swapped swap table page has 510 entries to fit into a page.
+// Every page in swapstab can contain ~1M infomation about swapped out memory.
+#define NUM_SWAPSTAB_PAGE_ENTRIES 510
 
-// A swap table has 25 table pages, so the number of in-memory pages is limited to 8500,
-// which is 33.2MB. All swap tables take 6.25MB.
-// Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
-#define NUM_MEMSTAB_PAGES 25
-#define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
-
-// This offset is logical, it's not the offset in a single file.
 #define SWAPSTAB_PAGE_OFFSET (NUM_SWAPSTAB_PAGE_ENTRIES * PGSIZE)
 
-// Every process has 8 file swap table pages, 8192 entries in total, and every entry mapped to a file.
-// Currently (2018/5/17 00:03), every file have a size limitation of 70KB, we use 64KB of each.
-// So every process can swap 512MB memory out at most. (If the file system support.)
-#define NUM_FILESTAB_PAGES 8
+// A swap table has 25 table pages, so the number of in-memory pages is limited to 4250,
+// which is 16.6MB. All swap tables take 6.25MB.
+// Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
+#define NUM_MEMSTAB_PAGES 25
+
+#define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
 
 
 struct memstab_page_entry
@@ -68,11 +62,6 @@ struct memstab_page_entry
 struct swapstab_page_entry
 {
   char *vaddr;
-};
-
-struct filestab_page_entry
-{
-  struct file* swapfile;
 };
 
 // This is part of a table to record pages in memory (stab means 'swap table').
@@ -94,12 +83,6 @@ struct swapstab_page
   struct swapstab_page *next;
   struct swapstab_page_entry entries[NUM_SWAPSTAB_PAGE_ENTRIES];
 };
-
-struct filestab_page
-{
-  struct filestab_page_entry entries[NUM_FILESTAB_PAGE_ENTRIES];
-};
-
 
 // Per-process state
 struct proc {
@@ -126,12 +109,12 @@ struct proc {
   int num_mem_entries;         // How many entries are saved in memstab. 
   int num_swapstab_pages;      // How many pages does swapstab_low have.
 
+  struct file *swapfile; // Swap file for memory.
+
   struct memstab_page *memstab_head;
   struct memstab_page *memstab_tail;
   struct memstab_page_entry *memqueue_head;
 
   struct swapstab_page *swapstab_head;
   struct swapstab_page *swapstab_tail;
-
-  struct filestab_page *swapfiles[NUM_FILESTAB_PAGES];
 };
