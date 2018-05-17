@@ -34,11 +34,10 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// Every memory swap table page has 170 entries to fit into a page.
-#define NUM_MEMSTAB_PAGE_ENTRIES 170
-// Every swapped swap table page has 510 entries to fit into a page.
-// Every page in swapstab can contain ~1M infomation about swapped out memory.
-#define NUM_SWAPSTAB_PAGE_ENTRIES 510
+// Every memory swap table page has 340 entries to fit into a page. (4088 Bytes in total.)
+#define NUM_MEMSTAB_PAGE_ENTRIES 340
+// Every swapped swap table page has 1022 entries to fit into a page. (4096 Bytes in total.)
+#define NUM_SWAPSTAB_PAGE_ENTRIES 1022
 
 #define SWAPSTAB_PAGE_OFFSET (NUM_SWAPSTAB_PAGE_ENTRIES * PGSIZE)
 
