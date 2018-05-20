@@ -234,8 +234,13 @@ void fifo_record(char *va, struct proc *curproc)
       {
         curpg->entries[curpos].vaddr = va;
         curpg->entries[curpos].next = curproc->memqueue_head;
-        curproc->memqueue_head->prev = &(curpg->entries[curpos]);
-        curproc->memqueue_head = &(curpg->entries[curpos]);
+        if (curproc->memqueue_head == 0)
+          curproc->memqueue_head = curproc->memqueue_tail = &(curpg->entries[curpos]);
+        else
+        {
+          curproc->memqueue_head->prev = &(curpg->entries[curpos]);
+          curproc->memqueue_head = &(curpg->entries[curpos]);
+        }
         return;
       }
     }
