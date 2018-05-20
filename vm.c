@@ -268,6 +268,8 @@ struct memstab_page_entry *fifo_write()
   if (link == 0 || link->next == 0)
     panic("Only 0 or 1 page in memory.");
   last = curproc->memqueue_tail;
+  if (last == 0 || last->prev == 0)
+    panic("[Error] last null!");
   curproc->memqueue_tail = last->prev;
   last->prev->next = 0;
   last->prev = 0;
@@ -377,8 +379,13 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
       l->vaddr = (char *)a;
       l->next = curproc->memqueue_head;
-      curproc->memqueue_head->prev = l;
-      curproc->memqueue_head = l;
+      if (curproc->memqueue_head == 0)
+        curproc->memqueue_head = curproc->memqueue_tail = l;
+      else
+      {
+        curproc->memqueue_head->prev = l;
+        curproc->memqueue_head = l;
+      }
       // No new page in memory will be used
       // (A page will be reused), mark that.
       newpage_allocated = 0;
@@ -796,6 +803,8 @@ void fifo_swap(uint addr)
   if (link == 0 || link->next == 0)
     panic("[ERROR] Only 0 or 1 pages in memory.");
   last = curproc->memqueue_tail;
+  if (last == 0 || last->prev == 0)
+    panic("[ERROR] last null!");
   curproc->memqueue_tail = last->prev;
   last->prev->next = 0;
   last->prev = 0;
