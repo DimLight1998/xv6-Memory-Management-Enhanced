@@ -678,7 +678,7 @@ int swapalloc(struct proc *p)
     cprintf("Entering swapalloc.\n");
 
   int no;
-  for (no = 0; no < 10; no++)
+  for (no = 0; no < MAX_SWAPFILES; no++)
   {
     char path[20];
     struct inode *in;
@@ -717,7 +717,7 @@ int swapdealloc(struct proc *p)
 
   int no;
   int res = 0;
-  for (no = 0; no < 10; no++)
+  for (no = 0; no < MAX_SWAPFILES; no++)
   {
     char path[20];
 
@@ -749,7 +749,7 @@ int swapread(struct proc *pr, char *buf, uint offset, uint size)
 
   int fileno = offset / SWAPFILE_LIMIT;
 
-  if (fileno < 0 || fileno > 10)
+  if (fileno < 0 || fileno > MAX_SWAPFILES)
     panic("offset too big!");
 
   int infileoffset = offset % SWAPFILE_LIMIT;
@@ -769,7 +769,7 @@ int swapwrite(struct proc *pr, char *buf, uint offset, uint size)
 
   int fileno = offset / SWAPFILE_LIMIT;
 
-  if (fileno < 0 || fileno > 10)
+  if (fileno < 0 || fileno > MAX_SWAPFILES)
     panic("offset too big!");
 
   int infileoffset = offset % SWAPFILE_LIMIT;

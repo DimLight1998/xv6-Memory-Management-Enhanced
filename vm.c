@@ -324,6 +324,8 @@ SUCCESS:
 // Swap out a page from memstab to swapstab.
 struct memstab_page_entry *write_page(char *va)
 {
+  if (SHOW_PAGE_SWAPOUT_INFO)
+    cprintf("Swapping out a page.\n");
   return fifo_write();
 }
 

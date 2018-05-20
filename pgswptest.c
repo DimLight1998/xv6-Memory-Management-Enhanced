@@ -25,7 +25,7 @@ int main()
     printf(1, "================================\n");
     printf(1, "Page swapping test started.\n");
 
-    // This is a magic number, we only have 640KB swapping memory.
+    // This is a magic number, we only have a few swapping memory.
     // If the level is set too big, will use out swapfile.
     // If too small, will not trigger page swapping function.
     rec(532);
