@@ -34,27 +34,30 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// Every memory swap table page has 170 entries to fit into a page.
-#define NUM_MEMSTAB_PAGE_ENTRIES 170
-// Every swapped swap table page has 510 entries to fit into a page.
-// Every page in swapstab can contain ~1M infomation about swapped out memory.
-#define NUM_SWAPSTAB_PAGE_ENTRIES 510
+// Every memory swap table page has 340 entries to fit into a page. (4088 Bytes in total.)
+#define NUM_MEMSTAB_PAGE_ENTRIES 340
+// Every swapped swap table page has 1022 entries to fit into a page. (4096 Bytes in total.)
+#define NUM_SWAPSTAB_PAGE_ENTRIES 1022
 
 #define SWAPSTAB_PAGE_OFFSET (NUM_SWAPSTAB_PAGE_ENTRIES * PGSIZE)
 
-// A swap table has 25 table pages, so the number of in-memory pages is limited to 4250,
-// which is 16.6MB. All swap tables take 6.25MB.
+// A swap table has 25 table pages, so the number of in-memory pages is limited to 8500,
+// which is 33.2MB. All swap tables take 6.25MB.
 // Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
 #define NUM_MEMSTAB_PAGES 25
 
 #define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
 
+// Max bytes in a single swap file.
+#define SWAPFILE_LIMIT 65536
+
+#define MAX_SWAPFILES 6
 
 struct memstab_page_entry
 {
   char *vaddr;
-  int age;
   struct memstab_page_entry *next;
+  struct memstab_page_entry *prev;
 };
 
 // This is the entry of a page of the swapped swap table. It only contains a virtual address,
@@ -109,11 +112,12 @@ struct proc {
   int num_mem_entries;         // How many entries are saved in memstab. 
   int num_swapstab_pages;      // How many pages does swapstab_low have.
 
-  struct file *swapfile; // Swap file for memory.
+  struct file *swapfile[MAX_SWAPFILES]; // Swap file for memory.
 
   struct memstab_page *memstab_head;
   struct memstab_page *memstab_tail;
   struct memstab_page_entry *memqueue_head;
+  struct memstab_page_entry *memqueue_tail;
 
   struct swapstab_page *swapstab_head;
   struct swapstab_page *swapstab_tail;

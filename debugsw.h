@@ -10,3 +10,5 @@
 #define SHOW_SWAPREAD_LEAVE         0
 #define SHOW_SWAPWRITE_ENTER        0
 #define SHOW_SWAPWRITE_LEAVE        0
+#define SHOW_SWAPPAGE_INFO          1
+#define SHOW_PAGE_SWAPOUT_INFO      1
