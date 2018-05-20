@@ -48,6 +48,8 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 #define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
 
+// Max bytes in a single swap file.
+#define SWAPFILE_LIMIT 65536
 
 struct memstab_page_entry
 {
@@ -108,7 +110,7 @@ struct proc {
   int num_mem_entries;         // How many entries are saved in memstab. 
   int num_swapstab_pages;      // How many pages does swapstab_low have.
 
-  struct file *swapfile; // Swap file for memory.
+  struct file *swapfile[10]; // Swap file for memory.
 
   struct memstab_page *memstab_head;
   struct memstab_page *memstab_tail;

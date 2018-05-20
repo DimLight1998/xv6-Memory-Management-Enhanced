@@ -674,30 +674,35 @@ nameiparent(char *path, char *name)
 
 int swapalloc(struct proc *p)
 {
-  if(SHOW_SWAPALLOC_ENTER)
+  if (SHOW_SWAPALLOC_ENTER)
     cprintf("Entering swapalloc.\n");
 
-  char path[20];
-  struct inode* in;
+  int no;
+  for (no = 0; no < 10; no++)
+  {
+    char path[20];
+    struct inode *in;
 
-  memmove(path, "./.swap", 7);
-  itoa(p->pid, path + 7);
+    memmove(path, "./.swap", 7);
+    itoa(no, path + 7);
+    itoa(p->pid, path + 8);
 
-  begin_op();
-  in = create(path, T_FILE, 0, 0);
-  iunlock(in);
+    begin_op();
+    in = create(path, T_FILE, 0, 0);
+    iunlock(in);
 
-  p->swapfile = filealloc();
-  if (p->swapfile == 0)
-    panic("[ERROR] No swapfile.\n");
+    p->swapfile[no] = filealloc();
+    if (p->swapfile[no] == 0)
+      panic("[ERROR] No swapfile.");
 
-  p->swapfile->ip = in;
-  p->swapfile->type = FD_INODE;
-  p->swapfile->off = 0;
-  p->swapfile->readable = O_WRONLY;
-  p->swapfile->writable = O_RDWR;
+    p->swapfile[no]->ip = in;
+    p->swapfile[no]->type = FD_INODE;
+    p->swapfile[no]->off = 0;
+    p->swapfile[no]->readable = O_WRONLY;
+    p->swapfile[no]->writable = O_RDWR;
 
-  end_op();
+    end_op();
+  }
 
   if (SHOW_SWAPALLOC_LEAVE)
     cprintf("Leaving swapalloc.\n");
@@ -710,43 +715,69 @@ int swapdealloc(struct proc *p)
   if (SHOW_SWAPDEALLOC_ENTER)
     cprintf("Entering swapdealloc.\n");
 
-  char path[20];
+  int no;
+  int res = 0;
+  for (no = 0; no < 10; no++)
+  {
+    char path[20];
 
-  memmove(path, "./.swap", 7);
-  itoa(p->pid, path + 7);
+    memmove(path, "./.swap", 7);
+    itoa(no, path + 7);
+    itoa(p->pid, path + 8);
 
-  if (0 == p->swapfile)
-    return -1;
-  fileclose(p->swapfile);
+    if (0 == p->swapfile[no])
+    {
+      res = -1;
+      continue;
+    }
+    fileclose(p->swapfile[no]);
+
+    if (kunlink(path) == -1)
+      res = -1;
+  }
 
   if (SHOW_SWAPDEALLOC_LEAVE)
     cprintf("Leaving swapdealloc.\n");
 
-  return kunlink(path);
+  return res;
 }
 
-int swapread(struct proc* pr, char*buf, uint offset, uint size)
+int swapread(struct proc *pr, char *buf, uint offset, uint size)
 {
-  if(SHOW_SWAPREAD_ENTER)
+  if (SHOW_SWAPREAD_ENTER)
     cprintf("Entering swapread.\n");
 
-  pr->swapfile->off = offset;
+  int fileno = offset / SWAPFILE_LIMIT;
 
-  if(SHOW_SWAPREAD_LEAVE)
+  if (fileno < 0 || fileno > 10)
+    panic("offset too big!");
+
+  int infileoffset = offset % SWAPFILE_LIMIT;
+
+  pr->swapfile[fileno]->off = infileoffset;
+
+  if (SHOW_SWAPREAD_LEAVE)
     cprintf("Leaving swapread.\n");
 
-  return fileread(pr->swapfile, buf, size);
+  return fileread(pr->swapfile[fileno], buf, size);
 }
 
-int swapwrite(struct proc* pr, char*buf, uint offset, uint size)
+int swapwrite(struct proc *pr, char *buf, uint offset, uint size)
 {
   if (SHOW_SWAPWRITE_ENTER)
     cprintf("Entering swapwrite.\n");
 
-  pr->swapfile->off = offset;
+  int fileno = offset / SWAPFILE_LIMIT;
+
+  if (fileno < 0 || fileno > 10)
+    panic("offset too big!");
+
+  int infileoffset = offset % SWAPFILE_LIMIT;
+
+  pr->swapfile[fileno]->off = infileoffset;
 
   if (SHOW_SWAPWRITE_LEAVE)
     cprintf("Leaving swapwrite.\n");
-    
-  return filewrite(pr->swapfile, buf, size);
+
+  return filewrite(pr->swapfile[fileno], buf, size);
 }
