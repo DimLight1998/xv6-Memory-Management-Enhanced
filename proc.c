@@ -42,6 +42,7 @@ void swaptableinit(void)
     thisproc->swapstab_head = 0;
     thisproc->swapstab_tail= 0;
     thisproc->memqueue_head = 0;
+    thisproc->memqueue_tail = 0;
     thisproc->num_swapstab_pages = 0;
 
     int j;
@@ -58,7 +59,7 @@ void memstab_page_clear(struct memstab_page *page, uint clear_link)
   int i;
   for (i = 0; i < NUM_MEMSTAB_PAGE_ENTRIES; i++)
   {
-    page->entries[i].age = 0;
+    page->entries[i].prev = 0;
     page->entries[i].next = 0;
     page->entries[i].vaddr = SLOT_USABLE;
   }
@@ -91,6 +92,7 @@ void memstab_clear(struct proc *pr)
   }
   pr->num_mem_entries = 0;
   pr->memqueue_head = 0;
+  pr->memqueue_tail = 0;
 }
 
 // Allocate a full memory swap table, return its head address.
@@ -187,6 +189,7 @@ int copy_stab(struct proc *dstproc, struct proc *srcproc)
   memstab_clear(dstproc);
   dstproc->num_mem_entries = srcproc->num_mem_entries;
   dstproc->memqueue_head = 0;
+  dstproc->memqueue_tail = 0;
 
   struct memstab_page *curpg = dstproc->memstab_head;
   int curpos = 0;
@@ -199,8 +202,8 @@ int copy_stab(struct proc *dstproc, struct proc *srcproc)
   {
     if (olddstent != 0)
       olddstent->next = &(curpg->entries[curpos]);
+    curpg->entries[curpos].prev = olddstent;
     olddstent = &(curpg->entries[curpos]);
-    curpg->entries[curpos].age = cursrcent->age;
     curpg->entries[curpos].vaddr = cursrcent->vaddr;
 
     cursrcent = cursrcent->next;
@@ -212,6 +215,7 @@ int copy_stab(struct proc *dstproc, struct proc *srcproc)
       curpos = 0;
     }
   }
+  dstproc->memqueue_tail = olddstent;
 
   // Copy swapped swap table.
   int i;
@@ -334,6 +338,7 @@ found:
   // Set up data for page swapping.
   p->num_mem_entries = 0;
   p->memqueue_head = 0;
+  p->memqueue_tail = 0;
 
   return p;
 }

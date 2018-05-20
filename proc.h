@@ -41,8 +41,8 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 #define SWAPSTAB_PAGE_OFFSET (NUM_SWAPSTAB_PAGE_ENTRIES * PGSIZE)
 
-// A swap table has 25 table pages, so the number of in-memory pages is limited to 4250,
-// which is 16.6MB. All swap tables take 6.25MB.
+// A swap table has 25 table pages, so the number of in-memory pages is limited to 8500,
+// which is 33.2MB. All swap tables take 6.25MB.
 // Number of swapped stab pages is unlimited, it will grow dynamically and is limited by USERTOP.
 #define NUM_MEMSTAB_PAGES 25
 
@@ -54,8 +54,8 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 struct memstab_page_entry
 {
   char *vaddr;
-  int age;
   struct memstab_page_entry *next;
+  struct memstab_page_entry *prev;
 };
 
 // This is the entry of a page of the swapped swap table. It only contains a virtual address,
@@ -115,6 +115,7 @@ struct proc {
   struct memstab_page *memstab_head;
   struct memstab_page *memstab_tail;
   struct memstab_page_entry *memqueue_head;
+  struct memstab_page_entry *memqueue_tail;
 
   struct swapstab_page *swapstab_head;
   struct swapstab_page *swapstab_tail;

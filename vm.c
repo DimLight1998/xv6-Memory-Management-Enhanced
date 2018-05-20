@@ -234,6 +234,7 @@ void fifo_record(char *va, struct proc *curproc)
       {
         curpg->entries[curpos].vaddr = va;
         curpg->entries[curpos].next = curproc->memqueue_head;
+        curproc->memqueue_head->prev = &(curpg->entries[curpos]);
         curproc->memqueue_head = &(curpg->entries[curpos]);
         return;
       }
@@ -261,10 +262,10 @@ struct memstab_page_entry *fifo_write()
   link = curproc->memqueue_head;
   if (link == 0 || link->next == 0)
     panic("Only 0 or 1 page in memory.");
-  while (link->next->next != 0)
-    link = link->next;
-  last = link->next;
-  link->next = 0;
+  last = curproc->memqueue_tail;
+  curproc->memqueue_tail = last->prev;
+  last->prev->next = 0;
+  last->prev = 0;
 
   struct swapstab_page *curpage;
   int i = 0, pg = 0;
@@ -364,13 +365,12 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if (curproc->num_mem_entries >= NUM_MEMSTAB_ENTRIES_CAPACITY)
     {
       // Swap out page at oldsz.
-      //! At least in fifo, the arg passed to write_page is unimportant.
       if ((l = write_page((char *)a)) == 0)
         panic("[ERROR] Cannot write to swapfile.");
 
-      //! These code are for FIFO only.
       l->vaddr = (char *)a;
       l->next = curproc->memqueue_head;
+      curproc->memqueue_head->prev = l;
       curproc->memqueue_head = l;
       // No new page in memory will be used
       // (A page will be reused), mark that.
@@ -446,17 +446,24 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
             break;
         }
 
+        panic("Should have a slot.");
         slot->vaddr = SLOT_USABLE;
         if (curproc->memqueue_head == slot)
+        {
+          if (slot->next != 0)
+            slot->next->prev = 0;
           curproc->memqueue_head = slot->next;
+        }
         else
         {
           struct memstab_page_entry *l = curproc->memqueue_head;
           while (l->next != slot)
             l = l->next;
+          l->next->next->prev = l;
           l->next = slot->next;
         }
         slot->next = 0;
+        slot->prev = 0;
         curproc->num_mem_entries--;
       }
 
@@ -781,10 +788,10 @@ void fifo_swap(uint addr)
   struct memstab_page_entry *last;
   if (link == 0 || link->next == 0)
     panic("[ERROR] Only 0 or 1 pages in memory.");
-  while (link->next->next != 0)
-    link = link->next;
-  last = link->next;
-  link->next = 0;
+  last = curproc->memqueue_tail;
+  curproc->memqueue_tail = last->prev;
+  last->prev->next = 0;
+  last->prev = 0;
 
   // Locate the PTE of the page to be swapped out.
   pte_in = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
@@ -841,12 +848,16 @@ void fifo_swap(uint addr)
 
   *pte_in = PTE_U | PTE_W | PTE_PG;
   last->next = curproc->memqueue_head;
+  curproc->memqueue_head->prev = last;
   curproc->memqueue_head = last;
   last->vaddr = (char *)PTE_ADDR(addr);
 }
 
 void swappage(uint addr)
 {
+  if(SHOW_SWAPPAGE_INFO)
+    cprintf("[ INFO ] Swapping page for 0x%x.\n", addr);
+    
   struct proc*curproc = myproc();
 
   //? Why should we do this?
