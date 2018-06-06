@@ -27,6 +27,7 @@ pinit(void)
 }
 
 struct share_mem_entry shmems[NUM_SHARE_MEM_ENTREIS];
+struct spinlock shmem_lock;
 
 void shmeminit(void)
 {
@@ -791,21 +792,81 @@ kill(int pid)
 
 int mkshm(int sig)
 {
-  return 0;
+  acquire(&shmem_lock);
+  int i, ret;
+  for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
+  {
+    if (shmems[i].sig == 0)
+    {
+      shmems[i].addr = kalloc();
+      shmems[i].sig = sig;
+      break;
+    }
+  }
+
+  if (i == NUM_SHARE_MEM_ENTREIS)
+    ret = -1;
+  else
+    ret = 0;
+  release(&shmem_lock);
+  return ret;
 }
 
 int rmshm(int sig)
 {
-  return 0;
+  acquire(&shmem_lock);
+  int i, ret;
+  for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
+  {
+    if (shmems[i].sig == sig)
+    {
+      kfree(shmems[i].addr);
+      shmems[i].addr = (void *)-1;
+      shmems[i].sig = 0;
+      break;
+    }
+  }
+
+  if (i == NUM_SHARE_MEM_ENTREIS)
+    ret = -1;
+  else
+    ret = 0;
+  release(&shmem_lock);
+  return ret;
 }
 
 int rdshm(int sig, char *buf)
 {
+  int i;
+  for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
+  {
+    if (shmems[i].sig == sig)
+    {
+      memmove(buf, shmems[i].addr, PGSIZE);
+      break;
+    }
+  }
+
+  if (i == NUM_SHARE_MEM_ENTREIS)
+    return -1;
   return 0;
 }
 
 int wtshm(int sig, char *buf)
 {
+  int i;
+  int len = strlen(buf);
+  for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
+  {
+    if (shmems[i].sig == sig)
+    {
+      strncpy(shmems[i].addr, buf, len + 1);
+      break;
+    }
+  }
+
+  if (i == NUM_SHARE_MEM_ENTREIS)
+    return -1;
   return 0;
 }
 
