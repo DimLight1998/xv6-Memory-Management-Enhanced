@@ -758,6 +758,26 @@ kill(int pid)
   return -1;
 }
 
+int mkshm(int sig)
+{
+  return 0;
+}
+
+int rmshm(int sig)
+{
+  return 0;
+}
+
+int rdshm(int sig, char *buf)
+{
+  return 0;
+}
+
+int wtshm(int sig, char *buf)
+{
+  return 0;
+}
+
 //PAGEBREAK: 36
 // Print a process listing to console.  For debugging.
 // Runs when user types ^P on console.

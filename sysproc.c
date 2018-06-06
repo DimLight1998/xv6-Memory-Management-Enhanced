@@ -102,3 +102,37 @@ int sys_nfpgs(void)
 {
   return get_num_free_pages();
 }
+
+int sys_mkshm(void)
+{
+  int sig;
+  if (argint(0, &sig) < 0)
+    return -1;
+  return mkshm(sig);
+}
+
+int sys_rmshm(void)
+{
+  int sig;
+  if (argint(0, &sig) < 0)
+    return -1;
+  return rmshm(sig);
+}
+
+int sys_rdshm(void)
+{
+  int sig;
+  char *content;
+  if (argint(0, &sig) < 0 || argptr(1, &content, PGSIZE) < 0)
+    return -1;
+  return rdshm(sig, content);
+}
+
+int sys_wtshm(void)
+{
+  int sig;
+  char *content;
+  if (argint(0, &sig) < 0 || argstr(1, &content) < 0)
+    return -1;
+  return wtshm(sig, content);
+}
