@@ -351,6 +351,14 @@ found:
   p->memqueue_head = 0;
   p->memqueue_tail = 0;
 
+  // Set up data for memory sharing.
+  int i;
+  for (i = 0; i < NUM_SHM_PER_PROC; i++)
+  {
+    p->shmem_sigs[i] = 0;
+    p->shmem_idxs[i] = -1;
+  }
+
   return p;
 }
 
@@ -514,6 +522,18 @@ exit(void)
   // Remove swap file.
   if (swapdealloc(curproc) != 0)
     panic("[ERROR] Remove swap file error.");
+
+  // Clear unreleased share memory.
+  int i;
+  for (i = 0;i<NUM_SHM_PER_PROC;i++)
+  {
+    if (curproc->shmem_sigs[i] != 0)
+    {
+      rmshm(curproc->shmem_sigs[i]);
+      curproc->shmem_sigs[i] = 0;
+    }
+    curproc->shmem_sigs[i] = -1;
+  }
 
   begin_op();
   iput(curproc->cwd);

@@ -88,6 +88,8 @@ struct swapstab_page
 };
 
 // Per-process state
+#define NUM_SHM_PER_PROC 4
+
 struct proc {
   uint sz;                     // Size of process memory (bytes)
   pde_t* pgdir;                // Page table
@@ -121,6 +123,9 @@ struct proc {
 
   struct swapstab_page *swapstab_head;
   struct swapstab_page *swapstab_tail;
+
+  int shmem_sigs[NUM_SHM_PER_PROC];
+  int shmem_idxs[NUM_SHM_PER_PROC];
 };
 
 
