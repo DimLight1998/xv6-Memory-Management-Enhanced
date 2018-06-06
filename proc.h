@@ -122,3 +122,11 @@ struct proc {
   struct swapstab_page *swapstab_head;
   struct swapstab_page *swapstab_tail;
 };
+
+
+#define NUM_SHARE_MEM_ENTREIS 1024
+struct share_mem_entry
+{
+  void *addr;
+  int sig;
+};

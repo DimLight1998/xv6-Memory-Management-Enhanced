@@ -26,6 +26,17 @@ pinit(void)
   initlock(&ptable.lock, "ptable");
 }
 
+struct share_mem_entry shmems[NUM_SHARE_MEM_ENTREIS];
+
+void shmeminit(void)
+{
+  int i;
+  for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
+  {
+    shmems[i].addr = 0;
+    shmems[i].sig = 0;
+  }
+}
 
 // Initialize the swap table. It will set all relating fields to zero in process table.
 void swaptableinit(void)
