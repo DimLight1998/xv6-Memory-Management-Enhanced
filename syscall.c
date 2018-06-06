@@ -120,6 +120,10 @@ extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_nfpgs(void);
+extern int sys_mkshm(void);
+extern int sys_rmshm(void);
+extern int sys_rdshm(void);
+extern int sys_wtshm(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -144,6 +148,10 @@ static int (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_nfpgs]   sys_nfpgs,
+[SYS_mkshm]   sys_mkshm,
+[SYS_rmshm]   sys_rmshm,
+[SYS_rdshm]   sys_rdshm,
+[SYS_wtshm]   sys_wtshm
 };
 
 void

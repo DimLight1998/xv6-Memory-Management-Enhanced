@@ -24,6 +24,10 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int nfpgs(void);
+int mkshm(int);
+int rmshm(int);
+int rdshm(int, char*);
+int wtshm(int, char*);
 
 // ulib.c
 int stat(char*, struct stat*);
