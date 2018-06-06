@@ -125,7 +125,6 @@ struct proc {
   struct swapstab_page *swapstab_tail;
 
   int shmem_sigs[NUM_SHM_PER_PROC];
-  int shmem_idxs[NUM_SHM_PER_PROC];
 };
 
 

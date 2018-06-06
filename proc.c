@@ -355,10 +355,7 @@ found:
   // Set up data for memory sharing.
   int i;
   for (i = 0; i < NUM_SHM_PER_PROC; i++)
-  {
     p->shmem_sigs[i] = 0;
-    p->shmem_idxs[i] = -1;
-  }
 
   return p;
 }
@@ -793,7 +790,18 @@ kill(int pid)
 int mkshm(int sig)
 {
   acquire(&shmem_lock);
-  int i, ret;
+  struct proc *curproc = myproc();
+  int i, j, ret;
+
+  for (j = 0; j < NUM_SHM_PER_PROC; j++)
+    if (curproc->shmem_sigs[j] == 0)
+      break;
+  if (j == NUM_SHM_PER_PROC)
+  {
+    release(&shmem_lock);
+    return -1;
+  }
+
   for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
   {
     if (shmems[i].sig == 0)
@@ -807,7 +815,10 @@ int mkshm(int sig)
   if (i == NUM_SHARE_MEM_ENTREIS)
     ret = -1;
   else
+  {
     ret = 0;
+    curproc->shmem_sigs[j] = sig;
+  }
   release(&shmem_lock);
   return ret;
 }
@@ -815,7 +826,19 @@ int mkshm(int sig)
 int rmshm(int sig)
 {
   acquire(&shmem_lock);
-  int i, ret;
+  struct proc* curproc = myproc();
+  int i, j, ret;
+
+  for (j = 0; j < NUM_SHM_PER_PROC; j++)
+    if (curproc->shmem_sigs[j] == sig)
+      break;
+
+  if (j == NUM_SHM_PER_PROC)
+  {
+    release(&shmem_lock);
+    return -1;
+  }
+
   for (i = 0; i < NUM_SHARE_MEM_ENTREIS; i++)
   {
     if (shmems[i].sig == sig)
@@ -830,7 +853,10 @@ int rmshm(int sig)
   if (i == NUM_SHARE_MEM_ENTREIS)
     ret = -1;
   else
+  {
     ret = 0;
+    curproc->shmem_sigs[j] = 0;
+  }
   release(&shmem_lock);
   return ret;
 }
